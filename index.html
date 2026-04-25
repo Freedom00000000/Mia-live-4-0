@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIA</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="titan-background">
+    <div class="stars stars-L"></div>
+    <div class="stars stars-M"></div>
+    <div class="stars stars-S"></div>
+  </div>
+
+  <div class="app-container">
+    <header class="app-header">
+      <h1 class="mia-title">MIA</h1>
+      <p class="mia-subtitle">Din AI-følgesvend</p>
+    </header>
+
+    <main class="chat-window">
+      <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Samtale med MIA"></div>
+    </main>
+
+    <footer class="input-row">
+      <input
+        type="text"
+        id="userInput"
+        class="chat-input"
+        placeholder="Skriv til MIA…"
+        autocomplete="off"
+        disabled
+      />
+      <button id="sendBtn" class="send-btn" disabled>Send</button>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

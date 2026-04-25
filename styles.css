@@ -1,10 +1,6 @@
 @import url("https://rsms.me/inter/inter-ui.css");
 
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   height: 100vh;
@@ -25,36 +21,10 @@ body {
   overflow: hidden;
 }
 
-.stars {
-  position: absolute;
-  top: 0;
-  width: 300vw;
-  height: 100vh;
-  background-repeat: repeat;
-  background-size: contain;
-  transform-origin: top left;
-}
-
-.stars-L {
-  background-image: url("assets/stars-L.svg");
-  background-size: 890px;
-  height: 750px;
-  animation: pan 200s linear infinite alternate;
-}
-
-.stars-M {
-  background-image: url("assets/stars-M.svg");
-  background-size: 600px;
-  height: 530px;
-  animation: pan 300s linear infinite alternate;
-}
-
-.stars-S {
-  background-image: url("assets/stars-S.svg");
-  background-size: 450px;
-  height: 370px;
-  animation: pan 400s linear infinite alternate;
-}
+.stars { position: absolute; top: 0; width: 300vw; height: 100vh; background-repeat: repeat; background-size: contain; transform-origin: top left; }
+.stars-L { background-image: url("assets/stars-L.svg"); background-size: 890px; height: 750px; animation: pan 200s linear infinite alternate; }
+.stars-M { background-image: url("assets/stars-M.svg"); background-size: 600px; height: 530px; animation: pan 300s linear infinite alternate; }
+.stars-S { background-image: url("assets/stars-S.svg"); background-size: 450px; height: 370px; animation: pan 400s linear infinite alternate; }
 
 @keyframes pan {
   from { transform: translate(-20%, 0%); }
@@ -62,72 +32,37 @@ body {
 }
 
 .app-container {
-  position: relative;
-  z-index: 1;
-  width: 95%;
-  max-width: 580px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 32px 0 20px;
-  height: 100vh;
+  position: relative; z-index: 1;
+  width: 95%; max-width: 580px;
+  display: flex; flex-direction: column;
+  gap: 16px; padding: 32px 0 20px; height: 100vh;
 }
 
-.app-header {
-  text-align: center;
-}
+.app-header { text-align: center; }
 
 .mia-title {
-  font-size: clamp(64px, 18vw, 96px);
-  font-weight: 900;
-  letter-spacing: -4px;
-  color: #020103;
-  background: #9b00f5;
-  display: inline-block;
-  padding: 0 20px;
-  line-height: 1.05;
-  text-transform: uppercase;
+  font-size: clamp(64px, 18vw, 96px); font-weight: 900; letter-spacing: -4px;
+  color: #020103; background: #9b00f5; display: inline-block;
+  padding: 0 20px; line-height: 1.05; text-transform: uppercase;
 }
 
-.mia-subtitle {
-  margin-top: 12px;
-  font-size: 16px;
-  font-weight: 300;
-  color: rgba(255, 255, 255, 0.55);
-  letter-spacing: 0.05em;
-}
+.mia-subtitle { margin-top: 12px; font-size: 16px; font-weight: 300; color: rgba(255,255,255,0.55); letter-spacing: 0.05em; }
 
-.chat-window {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
+.chat-window { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 
 .chat-log {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 8px 4px 4px;
-  scroll-behavior: smooth;
+  flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+  gap: 10px; padding: 8px 4px 4px; scroll-behavior: smooth;
 }
-
 .chat-log::-webkit-scrollbar { width: 4px; }
 .chat-log::-webkit-scrollbar-track { background: transparent; }
-.chat-log::-webkit-scrollbar-thumb { background: rgba(155, 0, 245, 0.35); border-radius: 2px; }
+.chat-log::-webkit-scrollbar-thumb { background: rgba(155,0,245,0.35); border-radius: 2px; }
 
 .bubble {
-  max-width: 80%;
-  padding: 12px 16px;
-  border-radius: 16px;
-  font-size: 16px;
-  line-height: 1.55;
-  word-break: break-word;
+  max-width: 80%; padding: 12px 16px; border-radius: 16px;
+  font-size: 16px; line-height: 1.55; word-break: break-word;
   animation: pop-in 0.18s ease-out;
 }
-
 @keyframes pop-in {
   from { opacity: 0; transform: scale(0.93) translateY(6px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
@@ -135,97 +70,65 @@ body {
 
 .bubble--mia {
   align-self: flex-start;
-  background: rgba(44, 37, 44, 0.82);
-  border: 1px solid rgba(155, 0, 245, 0.45);
-  border-bottom-left-radius: 4px;
-  backdrop-filter: blur(6px);
-  color: rgba(255, 255, 255, 0.92);
+  background: rgba(44,37,44,0.82); border: 1px solid rgba(155,0,245,0.45);
+  border-bottom-left-radius: 4px; backdrop-filter: blur(6px);
+  color: rgba(255,255,255,0.92);
 }
-
 .bubble--user {
-  align-self: flex-end;
-  background: #9b00f5;
-  border-bottom-right-radius: 4px;
-  color: #fff;
+  align-self: flex-end; background: #9b00f5;
+  border-bottom-right-radius: 4px; color: #fff;
 }
-
 .bubble--typing {
-  align-self: flex-start;
-  background: rgba(44, 37, 44, 0.6);
-  border: 1px solid rgba(155, 0, 245, 0.3);
-  border-bottom-left-radius: 4px;
-  backdrop-filter: blur(6px);
-  padding: 12px 20px;
+  align-self: flex-start; background: rgba(44,37,44,0.6);
+  border: 1px solid rgba(155,0,245,0.3); border-bottom-left-radius: 4px;
+  backdrop-filter: blur(6px); padding: 12px 20px;
 }
+.bubble--history { animation: none; opacity: 0.65; }
 
-.dot-flashing {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  height: 14px;
-}
-
+.dot-flashing { display: flex; gap: 5px; align-items: center; height: 14px; }
 .dot-flashing span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: rgba(155, 0, 245, 0.7);
-  animation: blink 1.2s ease-in-out infinite;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(155,0,245,0.7); animation: blink 1.2s ease-in-out infinite;
 }
-
 .dot-flashing span:nth-child(2) { animation-delay: 0.2s; }
 .dot-flashing span:nth-child(3) { animation-delay: 0.4s; }
-
 @keyframes blink {
   0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
-  40%            { opacity: 1;   transform: scale(1); }
+  40% { opacity: 1; transform: scale(1); }
 }
 
-.input-row {
-  display: flex;
-  gap: 10px;
-}
+.input-row { display: flex; gap: 10px; }
 
 .chat-input {
-  flex: 1;
-  font-family: inherit;
-  font-size: 16px;
-  color: #fff;
-  background: rgba(44, 37, 44, 0.75);
-  border: 1px solid rgba(155, 0, 245, 0.4);
-  border-radius: 10px;
-  padding: 14px 18px;
-  outline: none;
-  backdrop-filter: blur(6px);
-  transition: border-color 0.2s, background 0.2s;
+  flex: 1; font-family: inherit; font-size: 16px; color: #fff;
+  background: rgba(44,37,44,0.75); border: 1px solid rgba(155,0,245,0.4);
+  border-radius: 10px; padding: 14px 18px; outline: none;
+  backdrop-filter: blur(6px); transition: border-color 0.2s, background 0.2s;
 }
-
-.chat-input::placeholder { color: rgba(255, 255, 255, 0.35); }
-.chat-input:focus { border-color: #9b00f5; background: rgba(44, 37, 44, 0.9); }
+.chat-input::placeholder { color: rgba(255,255,255,0.35); }
+.chat-input:focus { border-color: #9b00f5; background: rgba(44,37,44,0.9); }
 .chat-input:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .send-btn {
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  color: #fff;
-  background: #9b00f5;
-  border: none;
-  border-radius: 10px;
-  padding: 14px 26px;
-  cursor: pointer;
-  letter-spacing: 0.04em;
-  transition: background 0.2s, transform 0.1s;
-  white-space: nowrap;
+  font-family: inherit; font-size: 15px; font-weight: 600; color: #fff;
+  background: #9b00f5; border: none; border-radius: 10px; padding: 14px 26px;
+  cursor: pointer; letter-spacing: 0.04em; transition: background 0.2s, transform 0.1s; white-space: nowrap;
 }
-
 .send-btn:hover:not(:disabled) { background: #b520ff; }
 .send-btn:active:not(:disabled) { transform: scale(0.96); }
 .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.bubble--image { max-width: 90%; display: flex; flex-direction: column; gap: 8px; }
+.image-caption { font-size: 13px; color: rgba(255,255,255,0.55); font-style: italic; margin: 0; }
+.generated-image {
+  width: 100%; max-width: 340px; border-radius: 10px; display: block;
+  background: rgba(155,0,245,0.08); min-height: 80px;
+  border: 1px solid rgba(155,0,245,0.3); transition: opacity 0.3s;
+}
+
 @media (max-width: 420px) {
   .app-container { gap: 12px; padding: 20px 0 16px; }
-  .bubble        { font-size: 15px; }
-  .chat-input    { font-size: 15px; padding: 12px 14px; }
-  .send-btn      { padding: 12px 18px; }
+  .bubble { font-size: 15px; }
+  .chat-input { font-size: 15px; padding: 12px 14px; }
+  .send-btn { padding: 12px 18px; }
 }

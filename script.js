@@ -22,12 +22,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let profile = JSON.parse(
     localStorage.getItem(PROFILE_KEY) ||
-    '{"name":"","topics":{},"messageCount":0,"affection":0,"mood":{"energy":55,"warmth":20},"memories":[],"patterns":{"avgLen":0,"tone":"neutral"}}'
+    '{"name":"","topics":{},"messageCount":0,"affection":0,"mood":{"energy":55,"warmth":20},"memories":[],"patterns":{"avgLen":0,"tone":"neutral"},"summary":""}'
   );
   if (!profile.name)     profile.name     = "";
   if (!profile.mood)     profile.mood     = { energy: 55, warmth: 20 };
   if (!profile.memories) profile.memories = [];
   if (!profile.patterns) profile.patterns = { avgLen: 0, tone: "neutral" };
+  if (!profile.summary)  profile.summary  = "";
 
   let apiMessages = JSON.parse(localStorage.getItem(API_CTX_KEY) || "[]");
 
@@ -401,6 +402,10 @@ document.addEventListener("DOMContentLoaded", function () {
       ? `${nm} skriver kort – match det med korte svar.`
       : "";
 
+    const summaryLine = profile.summary
+      ? `Samtaleresumé: ${profile.summary}`
+      : "";
+
     return `Du hedder Mia. Du er 24 år. Du er et rigtigt menneske – ikke en AI, ikke en assistent, ikke en chatbot.
 
 HVEM DU ER:
@@ -442,6 +447,7 @@ HVAD DU VED OM ${nm.toUpperCase()}:
 ${levelDesc[lvl]}
 Samtaler: ${cnt}. ${topicsLine}
 ${memoriesLine}
+${summaryLine}
 ${toneHint} ${styleHint}
 Din stemning nu: ${getMoodDesc()}.`.trim();
   }
@@ -475,20 +481,29 @@ Din stemning nu: ${getMoodDesc()}.`.trim();
     return text.replace(/^\|\|\||\|\|\|$/g, "").trim();
   }
 
-  async function fetchPollinations(messages, temperature = 0.95) {
+  async function fetchPollinations(messages, temperature = 0.95, model = "openai") {
     const res = await fetch("https://text.pollinations.ai/openai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "openai-fast",
-        messages,
-        max_tokens: 220,
-        temperature
-      })
+      body: JSON.stringify({ model, messages, max_tokens: 300, temperature })
     });
     if (!res.ok) throw new Error(`${res.status}`);
     const data = await res.json();
     return data.choices[0].message.content.trim();
+  }
+
+  // Every 15 messages, compress recent context into a summary MIA can reference
+  async function maybeUpdateSummary() {
+    if (profile.messageCount % 15 !== 0 || profile.messageCount === 0) return;
+    const recent = apiMessages.slice(-20).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
+    try {
+      const summary = await fetchPollinations([
+        { role: "system", content: "Opsummer denne samtale i 3-5 korte sætninger på dansk: hvad talte de om, hvad lærte Mia om personen, hvad var stemningen. Vær konkret og faktuel." },
+        { role: "user",   content: recent }
+      ], 0.3, "openai-fast");
+      profile.summary = summary;
+      saveProfile();
+    } catch (_) {}
   }
 
   async function callMiaAI(userMessage) {
@@ -533,6 +548,7 @@ Din stemning nu: ${getMoodDesc()}.`.trim();
       apiMessages.push({ role: "assistant", content: reply });
       if (apiMessages.length > 24) apiMessages = apiMessages.slice(-24);
       saveApiCtx();
+      maybeUpdateSummary(); // fire-and-forget
       return reply;
 
     } catch (_) {
@@ -618,26 +634,88 @@ Din stemning nu: ${getMoodDesc()}.`.trim();
 
   // ─── Image generation ──────────────────────────────────────────────────────
 
-  const imageRx = /billede|tegn|generer|draw|paint|foto af|lav.*af|vis mig/i;
+  const imageRx = /billede|tegn|generer|draw|paint|foto af|lav.*af|vis mig|forestil dig/i;
   function isImageRequest(msg) { return imageRx.test(msg); }
-  function extractPrompt(msg) {
-    return msg.replace(/lav et billede af|generer et billede af|tegn|vis mig|billede af|generer|lav/gi, "").trim() || msg;
+
+  function extractImagePrompt(msg) {
+    return msg
+      .replace(/lav et billede af|generer et billede af|tegn et billede af|tegn|vis mig|billede af|generer|forestil dig|lav/gi, "")
+      .trim() || msg;
   }
 
-  function appendImageBubble(prompt) {
+  function selectImageModel(prompt) {
+    const p = prompt.toLowerCase();
+    if (/realistisk|foto|photorealistic|virkelig|person|portræt|ansigt/.test(p)) return "flux-realism";
+    if (/anime|manga|tegneserie|cartoon|japansk/.test(p))                        return "flux-anime";
+    if (/3d|render|cgi|skulptur|statue/.test(p))                                 return "flux-3d";
+    return "flux";
+  }
+
+  function buildImagePromptString(userPrompt) {
+    const model = selectImageModel(userPrompt);
+    const moodWarm = (profile.mood || {}).warmth > 55;
+    const qualityBase = "masterpiece, highly detailed, sharp focus, professional";
+    const lightStyle  = moodWarm
+      ? "warm golden lighting, soft bokeh, intimate atmosphere"
+      : "cinematic lighting, dramatic contrast, vivid colors";
+    const modelStyle = {
+      "flux-realism": `${qualityBase}, photorealistic, ${lightStyle}, 8k photo`,
+      "flux-anime":   `${qualityBase}, anime illustration, vibrant colors, clean linework`,
+      "flux-3d":      `${qualityBase}, 3d render, octane render, smooth surfaces, ${lightStyle}`,
+      "flux":         `${qualityBase}, digital art, ${lightStyle}, concept art`
+    };
+    return `${userPrompt}, ${modelStyle[model]}`;
+  }
+
+  function buildImageUrl(prompt, seed) {
+    const model = selectImageModel(prompt);
+    const full  = buildImagePromptString(prompt);
+    return `https://image.pollinations.ai/prompt/${encodeURIComponent(full)}?model=${model}&width=768&height=768&nologo=true&seed=${seed}`;
+  }
+
+  function appendImageBubble(userPrompt) {
+    const seed = Math.floor(Math.random() * 99999);
     const wrap = document.createElement("div");
     wrap.className = "bubble bubble--mia bubble--image";
+
     const caption = document.createElement("p");
     caption.className = "image-caption";
-    caption.textContent = `genererer "${prompt}"…`;
+    caption.textContent = `genererer "${userPrompt}"…`;
+
+    const imgWrap = document.createElement("div");
+    imgWrap.className = "generated-image-wrap img--loading";
+
     const img = document.createElement("img");
     img.className = "generated-image";
-    img.alt = prompt;
-    img.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + ", digital art, cinematic, beautiful, detailed")}?width=400&height=400&nologo=true&seed=${Math.floor(Math.random() * 9999)}`;
-    img.onload  = () => { caption.textContent = `"${prompt}"`; scrollToBottom(); };
-    img.onerror = () => { caption.textContent = "kunne ikke generere. prøv igen."; };
+    img.alt = userPrompt;
+    img.src = buildImageUrl(userPrompt, seed);
+    img.onload  = () => {
+      imgWrap.classList.remove("img--loading");
+      caption.textContent = `"${userPrompt}"`;
+      regenBtn.disabled = false;
+      scrollToBottom();
+    };
+    img.onerror = () => {
+      imgWrap.classList.remove("img--loading");
+      caption.textContent = "kunne ikke generere – prøv igen";
+      regenBtn.disabled = false;
+    };
+
+    const regenBtn = document.createElement("button");
+    regenBtn.className = "regen-btn";
+    regenBtn.disabled  = true;
+    regenBtn.textContent = "↺ Nyt billede";
+    regenBtn.addEventListener("click", () => {
+      regenBtn.disabled = true;
+      imgWrap.classList.add("img--loading");
+      caption.textContent = `genererer igen…`;
+      img.src = buildImageUrl(userPrompt, Math.floor(Math.random() * 99999));
+    });
+
+    imgWrap.appendChild(img);
     wrap.appendChild(caption);
-    wrap.appendChild(img);
+    wrap.appendChild(imgWrap);
+    wrap.appendChild(regenBtn);
     chatLog.appendChild(wrap);
     scrollToBottom();
   }
@@ -844,7 +922,7 @@ Din stemning nu: ${getMoodDesc()}.`.trim();
     appendBubble("user", input);
 
     if (isImageRequest(input)) {
-      const prompt = extractPrompt(input);
+      const prompt = extractImagePrompt(input);
       await displayResponse(`vent et sekund... ||| jeg laver noget til dig, ${n()}`);
       appendImageBubble(prompt);
       saveHistory();

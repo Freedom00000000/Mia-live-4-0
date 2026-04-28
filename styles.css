@@ -255,13 +255,49 @@ body {
 
 /* ─── Images ─── */
 
-.bubble--image { max-width: 90%; display: flex; flex-direction: column; gap: 8px; }
+.bubble--image { max-width: 92%; display: flex; flex-direction: column; gap: 8px; }
 .image-caption { font-size: 13px; color: rgba(255,255,255,0.55); font-style: italic; margin: 0; }
-.generated-image {
-  width: 100%; max-width: 340px; border-radius: 10px; display: block;
-  background: rgba(155,0,245,0.08); min-height: 80px;
-  border: 1px solid rgba(155,0,245,0.3); transition: opacity 0.3s;
+
+.generated-image-wrap {
+  width: 100%; max-width: 360px;
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid rgba(155,0,245,0.3);
+  background: rgba(44,37,44,0.5);
+  min-height: 120px;
+  position: relative;
 }
+.generated-image-wrap.img--loading::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg,
+    rgba(155,0,245,0.06) 0%,
+    rgba(155,0,245,0.18) 40%,
+    rgba(155,0,245,0.06) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 12px;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+.generated-image {
+  width: 100%; display: block;
+  border-radius: 12px;
+  transition: opacity 0.4s;
+}
+.generated-image-wrap.img--loading .generated-image { opacity: 0; }
+
+.regen-btn {
+  align-self: flex-start;
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  color: rgba(155,0,245,0.8); background: transparent;
+  border: 1px solid rgba(155,0,245,0.3); border-radius: 8px;
+  padding: 5px 12px; cursor: pointer; letter-spacing: 0.04em;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.regen-btn:hover:not(:disabled) { color: #fff; border-color: #9b00f5; background: rgba(155,0,245,0.15); }
+.regen-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ─── Modal ─── */
 

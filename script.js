@@ -303,32 +303,84 @@ document.addEventListener("DOMContentLoaded", function () {
     if (file.type.startsWith("image/")) {
       const dataUrl = await readFileAsDataURL(file);
       appendUserImage(dataUrl, file.name);
-      // Tell MIA about the image in context
-      const context = `${n()} delte et billede: "${file.name}"`;
-      learn(context);
+      learn(`delte billede: ${file.name}`);
       appendTyping();
-      await new Promise(r => setTimeout(r, 380 + Math.random() * 300));
-      const response = await callMiaAI(`[brugeren delte et billede ved navn: ${file.name}. Reager som Mia – nysgerrigt og personligt, som om du kan se det]`);
+      await new Promise(r => setTimeout(r, 300));
+      const response = await callMiaAIWithVision(dataUrl, file.name);
       await displayResponse(response);
       saveHistory();
       return;
     }
 
-    if (file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".md")) {
+    const isText = file.type.startsWith("text/") || /\.(txt|md|csv|json|js|py|html|css|ts|jsx|tsx|xml|yaml|yml|sh|log)$/i.test(file.name);
+    if (isText) {
       const text = await readFileAsText(file);
-      const preview = text.slice(0, 1800);
       appendFileBubble(file.name, "📄");
-      userInput.value = `[Fil: ${file.name}]\n${preview}`;
-      userInput.focus();
+      learn(`delte fil: ${file.name}`);
+      appendTyping();
+      await new Promise(r => setTimeout(r, 300));
+      const response = await callMiaAIWithFile(file.name, text);
+      await displayResponse(response);
+      saveHistory();
       return;
     }
 
-    // Any other file type — show as mention
+    // Unknown type — acknowledge and react
     appendFileBubble(file.name, "📎");
-    const response = await callMiaAI(`[brugeren delte filen: ${file.name}. Reager som Mia – nysgerrigt]`);
+    const response = await callMiaAI(`[${n()} delte filen "${file.name}". Reager som Mia – nysgerrigt og personligt.]`);
     await displayResponse(response);
     saveHistory();
   });
+
+  // ─── Vision: MIA actually sees the image ───────────────────────────────────
+
+  async function callMiaAIWithVision(dataUrl, filename) {
+    const sysMsg   = { role: "system", content: buildSystemPrompt() };
+    const visionMsg = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `[${n()} delte dette billede: "${filename}". Se det og reager som Mia – beskriv hvad du ser, hvad du tænker om det, hvad du føler. Vær specifik, personlig og ægte.]`
+        },
+        {
+          type: "image_url",
+          image_url: { url: dataUrl }
+        }
+      ]
+    };
+
+    // Log a text placeholder for context continuity
+    const contextEntry = `[delte billede: ${filename}]`;
+    apiMessages.push({ role: "user", content: contextEntry });
+    if (apiMessages.length > 24) apiMessages = apiMessages.slice(-24);
+
+    try {
+      let reply = cleanReply(
+        await fetchPollinations([sysMsg, ...apiMessages.slice(0, -1), visionMsg], 0.95, "openai")
+      );
+      if (hasAILeak(reply)) reply = getLocalResponse(contextEntry);
+      apiMessages.push({ role: "assistant", content: reply });
+      saveApiCtx();
+      return reply;
+    } catch (_) {
+      return getLocalResponse(contextEntry);
+    }
+  }
+
+  // ─── File reading: MIA reads the actual content ─────────────────────────────
+
+  async function callMiaAIWithFile(filename, content) {
+    const MAX_CHARS = 3500;
+    const trimmed   = content.length > MAX_CHARS
+      ? content.slice(0, MAX_CHARS) + `\n\n[... ${content.length - MAX_CHARS} tegn mere ikke vist]`
+      : content;
+
+    const fileMsg = `<fil navn="${filename}">\n${trimmed}\n</fil>\n\nDu kan nu læse denne fil. Reager som Mia – hvad ser du, hvad tænker du, har du spørgsmål til indholdet?`;
+    return callMiaAI(fileMsg);
+  }
+
+  // ─── File helpers ───────────────────────────────────────────────────────────
 
   function readFileAsDataURL(file) {
     return new Promise((resolve, reject) => {
@@ -353,8 +405,7 @@ document.addEventListener("DOMContentLoaded", function () {
     wrap.className = "bubble--user-image";
     const img  = document.createElement("img");
     img.className = "user-uploaded-img";
-    img.src = src;
-    img.alt = name;
+    img.src = src; img.alt = name;
     wrap.appendChild(img);
     chatLog.appendChild(wrap);
     scrollToBottom();

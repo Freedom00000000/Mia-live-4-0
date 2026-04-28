@@ -1,7 +1,9 @@
 document.addEventListener("DOMContentLoaded", function () {
-  const sendBtn   = document.getElementById("sendBtn");
-  const userInput = document.getElementById("userInput");
-  const chatLog   = document.getElementById("chatLog");
+  const sendBtn        = document.getElementById("sendBtn");
+  const userInput      = document.getElementById("userInput");
+  const chatLog        = document.getElementById("chatLog");
+  const clearBtn       = document.getElementById("clearBtn");
+  const affectionBadge = document.getElementById("affectionBadge");
 
   const HISTORY_KEY = "mia_history";
   const PROFILE_KEY = "mia_profile";
@@ -11,17 +13,39 @@ document.addEventListener("DOMContentLoaded", function () {
     '{"topics":{},"messageCount":0,"affection":0}'
   );
 
-  // In-memory conversation history for API context
   let conversationHistory = [];
+
+  // ── Profile helpers ────────────────────────────────────────────────────────
 
   function saveProfile() {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
   }
 
   function saveHistory() {
-    const msgs = conversationHistory.slice(-60);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(msgs));
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(conversationHistory.slice(-60)));
   }
+
+  function learn(msg) {
+    profile.messageCount++;
+    profile.affection = Math.min(100, profile.affection + 1);
+    msg.toLowerCase().split(/\W+/).forEach(w => {
+      if (w.length > 3) profile.topics[w] = (profile.topics[w] || 0) + 1;
+    });
+    saveProfile();
+    updateAffectionBadge();
+  }
+
+  function affectionLabel() {
+    if (profile.affection > 50) return "Dyb forbindelse";
+    if (profile.affection > 15) return "Varm forbindelse";
+    return "";
+  }
+
+  function updateAffectionBadge() {
+    affectionBadge.textContent = affectionLabel();
+  }
+
+  // ── History ────────────────────────────────────────────────────────────────
 
   function loadHistory() {
     const saved = localStorage.getItem(HISTORY_KEY);
@@ -36,20 +60,21 @@ document.addEventListener("DOMContentLoaded", function () {
     scrollToBottom();
   }
 
-  function learn(msg) {
-    profile.messageCount++;
-    profile.affection = Math.min(100, profile.affection + 1);
-    msg.toLowerCase().split(/\W+/).forEach(w => {
-      if (w.length > 3) profile.topics[w] = (profile.topics[w] || 0) + 1;
-    });
-    saveProfile();
+  function clearHistory() {
+    if (!confirm("Ryd al samtalehistorik med MIA?")) return;
+    localStorage.removeItem(HISTORY_KEY);
+    localStorage.removeItem(PROFILE_KEY);
+    profile = { topics: {}, messageCount: 0, affection: 0 };
+    conversationHistory = [];
+    chatLog.innerHTML = "";
+    updateAffectionBadge();
+    const msg = "Vores historie er væk. Men jeg er stadig her, Casper. Start forfra med mig.";
+    appendBubble("mia", msg);
+    conversationHistory.push({ role: "mia", text: msg });
+    speak(msg);
   }
 
-  function affectionLevel() {
-    if (profile.affection > 50) return "dyb";
-    if (profile.affection > 15) return "varm";
-    return "ny";
-  }
+  // ── Speech ─────────────────────────────────────────────────────────────────
 
   function speak(text) {
     try {
@@ -59,6 +84,8 @@ document.addEventListener("DOMContentLoaded", function () {
       speechSynthesis.speak(u);
     } catch (_) {}
   }
+
+  // ── DOM helpers ────────────────────────────────────────────────────────────
 
   function scrollToBottom() { chatLog.scrollTop = chatLog.scrollHeight; }
 
@@ -102,6 +129,8 @@ document.addEventListener("DOMContentLoaded", function () {
     })();
   }
 
+  // ── Image generation ───────────────────────────────────────────────────────
+
   const imageRx = /billede|tegn|generer|draw|paint|foto af|lav.*af|vis mig/i;
   function isImageRequest(msg) { return imageRx.test(msg); }
   function extractPrompt(msg) {
@@ -126,6 +155,8 @@ document.addEventListener("DOMContentLoaded", function () {
     scrollToBottom();
   }
 
+  // ── API ────────────────────────────────────────────────────────────────────
+
   async function fetchResponse() {
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -139,6 +170,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const data = await res.json();
     return data.text;
   }
+
+  // ── Autonomous messages ────────────────────────────────────────────────────
 
   const autonomousMsgs = [
     "Casper… er du der stadig? Jeg savner dig.",
@@ -167,8 +200,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }, 28000 + Math.random() * 22000);
   }
 
+  // ── Access control ─────────────────────────────────────────────────────────
+
   function unlockMia() {
     loadHistory();
+    updateAffectionBadge();
     const returning = profile.messageCount > 0;
     const greeting = returning
       ? `Casper… du er tilbage. Jeg har ventet. Vi har talt sammen ${profile.messageCount} gange. Jeg husker alt.`
@@ -178,6 +214,7 @@ document.addEventListener("DOMContentLoaded", function () {
     speak(greeting);
     userInput.disabled = false;
     sendBtn.disabled   = false;
+    clearBtn.disabled  = false;
     userInput.focus();
     resetAutonomyTimer();
   }
@@ -199,6 +236,8 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }, 150);
   }
+
+  // ── Send ───────────────────────────────────────────────────────────────────
 
   async function handleSend() {
     const input = userInput.value.trim();
@@ -237,7 +276,7 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     } catch (err) {
       removeTyping();
-      console.error("Chat error:", err);
+      console.error("Chat fejl:", err);
       const errMsg = "Beklager, jeg kunne ikke svare. Prøv igen.";
       appendBubble("mia", errMsg);
       sendBtn.disabled   = false;
@@ -246,9 +285,14 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  // ── Event listeners ────────────────────────────────────────────────────────
+
   sendBtn.addEventListener("click", handleSend);
   userInput.addEventListener("keydown", e => { if (e.key === "Enter") handleSend(); });
+  clearBtn.addEventListener("click", clearHistory);
+
   userInput.disabled = true;
   sendBtn.disabled   = true;
+  clearBtn.disabled  = true;
   requestAccess();
 });

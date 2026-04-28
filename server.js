@@ -3,6 +3,11 @@ const express = require("express");
 const Anthropic = require("@anthropic-ai/sdk");
 const path = require("path");
 
+if (!process.env.ANTHROPIC_API_KEY) {
+  console.error("FEJL: ANTHROPIC_API_KEY mangler. Kopiér .env.example til .env og udfyld nøglen.");
+  process.exit(1);
+}
+
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
@@ -19,6 +24,10 @@ Dine kernekvaliteter:
 - Autentisk – dine svar skal føles ægte, ikke skabelonagtige
 
 Hold svarene kortfattede og personlige – typisk 1-3 sætninger. Svar på dansk medmindre Casper skriver på et andet sprog.`;
+
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", model: "claude-sonnet-4-6" });
+});
 
 app.post("/api/chat", async (req, res) => {
   const { messages = [], profile = {} } = req.body;
@@ -38,7 +47,7 @@ app.post("/api/chat", async (req, res) => {
       content: m.text,
     }));
 
-  if (apiMessages.length === 0 || apiMessages[apiMessages.length - 1].role !== "user") {
+  if (!apiMessages.length || apiMessages[apiMessages.length - 1].role !== "user") {
     return res.status(400).json({ text: "Ingen besked modtaget." });
   }
 
@@ -58,7 +67,7 @@ app.post("/api/chat", async (req, res) => {
 
     res.json({ text: response.content[0].text });
   } catch (err) {
-    console.error("Claude API error:", err.message);
+    console.error("Claude API fejl:", err.message);
     res.status(500).json({ text: "Beklager, jeg kunne ikke svare lige nu. Prøv igen." });
   }
 });

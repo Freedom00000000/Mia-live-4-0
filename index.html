@@ -14,10 +14,35 @@
     <div class="stars stars-S"></div>
   </div>
 
+  <!-- Onboarding / password modal -->
+  <div id="miaModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-box">
+      <div class="modal-avatar">M</div>
+      <h2 id="modalTitle" class="modal-title">Velkommen til MIA</h2>
+      <p class="modal-desc">Din AI-følgesvend</p>
+      <form id="modalForm" class="modal-form" novalidate>
+        <div id="nameRow" class="modal-field">
+          <label for="modalName">Dit navn</label>
+          <input id="modalName" type="text" autocomplete="given-name" placeholder="Skriv dit navn…" maxlength="40">
+        </div>
+        <div class="modal-field">
+          <label for="modalPass">Adgangskode</label>
+          <input id="modalPass" type="password" autocomplete="current-password" placeholder="••••••">
+        </div>
+        <p id="modalError" class="modal-error" aria-live="polite"></p>
+        <button id="modalSubmit" type="submit" class="modal-btn">Åbn MIA</button>
+      </form>
+    </div>
+  </div>
+
   <div class="app-container">
     <header class="app-header">
-      <h1 class="mia-title">MIA</h1>
+      <div class="header-top">
+        <h1 class="mia-title">MIA</h1>
+        <button id="clearBtn" class="clear-btn" title="Ryd samtale" aria-label="Ryd samtalehistorik">↺</button>
+      </div>
       <p class="mia-subtitle">Din AI-følgesvend</p>
+      <span id="affectionLabel" class="affection-label affection--ny">Ny forbindelse</span>
     </header>
 
     <main class="chat-window">

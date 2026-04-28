@@ -11,6 +11,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const passField    = document.getElementById("modalPass");
   const affectionEl  = document.getElementById("affectionLabel");
   const appContainer = document.querySelector(".app-container");
+  const micBtn       = document.getElementById("micBtn");
+  const fileBtn      = document.getElementById("fileBtn");
+  const fileInput    = document.getElementById("fileInput");
+  const voiceStatus  = document.getElementById("voiceStatus");
 
   const HISTORY_KEY  = "mia_history";
   const PROFILE_KEY  = "mia_profile";
@@ -151,14 +155,216 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ─── TTS ───────────────────────────────────────────────────────────────────
 
-  function speak(text) {
+  function speakWithCallback(text, onEnd) {
     try {
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = "da-DK";
-      u.rate = 0.95;
+      u.lang  = "da-DK";
+      u.rate  = 0.95;
+      u.onend = () => { setMicState("idle"); if (onEnd) onEnd(); };
+      setMicState("speaking");
       speechSynthesis.speak(u);
-    } catch (_) {}
+    } catch (_) { if (onEnd) onEnd(); }
+  }
+
+  function speak(text) { speakWithCallback(text, null); }
+
+  // ─── Voice (Web Speech API) ────────────────────────────────────────────────
+
+  let liveMode      = false;
+  let isListening   = false;
+  let recognition   = null;
+
+  function setVoiceStatus(msg, cls) {
+    voiceStatus.textContent = msg;
+    voiceStatus.className   = "voice-status" + (cls ? " " + cls : "");
+  }
+
+  function setMicState(state) {
+    micBtn.classList.remove("mic--listening", "mic--speaking");
+    userInput.classList.remove("input--listening");
+    if (state === "listening") {
+      micBtn.classList.add("mic--listening");
+      userInput.classList.add("input--listening");
+      setVoiceStatus("● lytter…", "status--listening");
+    } else if (state === "speaking") {
+      micBtn.classList.add("mic--speaking");
+      setVoiceStatus("MIA taler…", "status--speaking");
+    } else {
+      setVoiceStatus(liveMode ? "Live-tilstand aktiv — din tur" : "");
+    }
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.lang             = "da-DK";
+    recognition.continuous       = false;
+    recognition.interimResults   = true;
+    recognition.maxAlternatives  = 1;
+
+    recognition.onstart = () => {
+      isListening = true;
+      setMicState("listening");
+      userInput.placeholder = "Taler…";
+    };
+
+    recognition.onresult = e => {
+      const transcript = Array.from(e.results).map(r => r[0].transcript).join("");
+      userInput.value = transcript;
+      if (e.results[e.results.length - 1].isFinal) {
+        isListening = false;
+        userInput.placeholder = "Skriv til MIA…";
+        setMicState("idle");
+        if (transcript.trim()) handleSend();
+      }
+    };
+
+    recognition.onerror = e => {
+      isListening = false;
+      userInput.placeholder = "Skriv til MIA…";
+      setMicState("idle");
+      if (e.error !== "no-speech" && e.error !== "aborted") {
+        setVoiceStatus("Mikrofon fejl: " + e.error);
+      }
+    };
+
+    recognition.onend = () => {
+      isListening = false;
+      if (liveMode && !userInput.disabled && !speechSynthesis.speaking) {
+        startListening();
+      } else {
+        userInput.placeholder = "Skriv til MIA…";
+        if (!liveMode) setMicState("idle");
+      }
+    };
+  } else {
+    micBtn.title = "Stemme ikke understøttet i denne browser";
+  }
+
+  function startListening() {
+    if (!recognition || userInput.disabled) return;
+    try { recognition.start(); } catch (_) {}
+  }
+
+  function stopListening() {
+    if (!recognition) return;
+    liveMode = false;
+    try { recognition.stop(); } catch (_) {}
+    setMicState("idle");
+    setVoiceStatus("");
+  }
+
+  micBtn.addEventListener("click", () => {
+    if (!recognition) {
+      setVoiceStatus("Stemme kræver Chrome eller Edge");
+      return;
+    }
+    if (isListening) {
+      stopListening();
+      return;
+    }
+    if (liveMode) {
+      stopListening();
+      return;
+    }
+    liveMode = false;
+    startListening();
+  });
+
+  // Long-press mic = toggle live mode
+  let micHoldTimer = null;
+  micBtn.addEventListener("pointerdown", () => {
+    micHoldTimer = setTimeout(() => {
+      if (!recognition) return;
+      liveMode = !liveMode;
+      if (liveMode) {
+        setVoiceStatus("Live-tilstand — hold for at stoppe", "status--listening");
+        startListening();
+      } else {
+        stopListening();
+      }
+    }, 600);
+  });
+  micBtn.addEventListener("pointerup",   () => clearTimeout(micHoldTimer));
+  micBtn.addEventListener("pointerleave", () => clearTimeout(micHoldTimer));
+
+  // ─── File upload ───────────────────────────────────────────────────────────
+
+  fileBtn.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    fileInput.value = "";
+
+    if (file.type.startsWith("image/")) {
+      const dataUrl = await readFileAsDataURL(file);
+      appendUserImage(dataUrl, file.name);
+      // Tell MIA about the image in context
+      const context = `${n()} delte et billede: "${file.name}"`;
+      learn(context);
+      appendTyping();
+      await new Promise(r => setTimeout(r, 380 + Math.random() * 300));
+      const response = await callMiaAI(`[brugeren delte et billede ved navn: ${file.name}. Reager som Mia – nysgerrigt og personligt, som om du kan se det]`);
+      await displayResponse(response);
+      saveHistory();
+      return;
+    }
+
+    if (file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".md")) {
+      const text = await readFileAsText(file);
+      const preview = text.slice(0, 1800);
+      appendFileBubble(file.name, "📄");
+      userInput.value = `[Fil: ${file.name}]\n${preview}`;
+      userInput.focus();
+      return;
+    }
+
+    // Any other file type — show as mention
+    appendFileBubble(file.name, "📎");
+    const response = await callMiaAI(`[brugeren delte filen: ${file.name}. Reager som Mia – nysgerrigt]`);
+    await displayResponse(response);
+    saveHistory();
+  });
+
+  function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload  = e => resolve(e.target.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload  = e => resolve(e.target.result);
+      r.onerror = reject;
+      r.readAsText(file, "UTF-8");
+    });
+  }
+
+  function appendUserImage(src, name) {
+    const wrap = document.createElement("div");
+    wrap.className = "bubble--user-image";
+    const img  = document.createElement("img");
+    img.className = "user-uploaded-img";
+    img.src = src;
+    img.alt = name;
+    wrap.appendChild(img);
+    chatLog.appendChild(wrap);
+    scrollToBottom();
+  }
+
+  function appendFileBubble(name, icon) {
+    const div = document.createElement("div");
+    div.className = "bubble bubble--user-file";
+    div.innerHTML = `<span class="file-icon">${icon}</span><span>${name}</span>`;
+    chatLog.appendChild(div);
+    scrollToBottom();
   }
 
   // ─── System prompt ─────────────────────────────────────────────────────────
@@ -497,8 +703,10 @@ Din stemning nu: ${getMoodDesc()}.`.trim();
         await new Promise(r => setTimeout(r, 80));
       }
     }
-    // Speak only the first bubble to avoid overlap
-    speak(parts[0]);
+    // Speak only the first bubble to avoid overlap; restart mic in live mode when done
+    speakWithCallback(parts[0], () => {
+      if (liveMode && !userInput.disabled) startListening();
+    });
   }
 
   // ─── Autonomy ──────────────────────────────────────────────────────────────
@@ -616,6 +824,7 @@ Din stemning nu: ${getMoodDesc()}.`.trim();
     const raw = greetings[Math.floor(Math.random() * greetings.length)];
     userInput.disabled = false;
     sendBtn.disabled   = false;
+    micBtn.disabled    = false;
     await displayResponse(raw);
     saveHistory();
     userInput.focus();

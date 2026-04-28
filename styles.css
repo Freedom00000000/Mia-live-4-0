@@ -143,9 +143,20 @@ body {
   40%           { opacity: 1;   transform: scale(1);   }
 }
 
+/* ─── Voice status ─── */
+
+.voice-status {
+  min-height: 20px;
+  font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+  color: rgba(255,255,255,0.4); text-align: center;
+  transition: color 0.3s, opacity 0.3s;
+}
+.voice-status.status--listening { color: #e040fb; }
+.voice-status.status--speaking  { color: rgba(155,0,245,0.7); }
+
 /* ─── Input ─── */
 
-.input-row { display: flex; gap: 10px; }
+.input-row { display: flex; gap: 8px; align-items: center; }
 
 .chat-input {
   flex: 1; font-family: inherit; font-size: 16px; color: #fff;
@@ -156,16 +167,91 @@ body {
 .chat-input::placeholder { color: rgba(255,255,255,0.35); }
 .chat-input:focus { border-color: #9b00f5; background: rgba(44,37,44,0.9); }
 .chat-input:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-input.input--listening {
+  border-color: #e040fb;
+  background: rgba(44,37,44,0.92);
+}
+
+/* ─── Icon buttons (mic + file) ─── */
+
+.icon-btn {
+  flex-shrink: 0;
+  width: 46px; height: 46px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(44,37,44,0.75); border: 1px solid rgba(155,0,245,0.35);
+  border-radius: 10px; cursor: pointer; color: rgba(255,255,255,0.5);
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  backdrop-filter: blur(6px);
+  position: relative; overflow: visible;
+  padding: 0;
+}
+.icon-btn svg { width: 18px; height: 18px; }
+.icon-btn:hover:not(:disabled) { color: #fff; border-color: #9b00f5; background: rgba(155,0,245,0.15); }
+.icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* File button */
+.file-btn { text-decoration: none; }
+
+/* Mic button */
+.mic-btn { position: relative; }
+
+.mic-ring {
+  position: absolute; inset: -3px;
+  border-radius: 13px;
+  border: 2px solid transparent;
+  transition: border-color 0.2s;
+  pointer-events: none;
+}
+.mic-btn.mic--listening {
+  color: #e040fb;
+  border-color: #e040fb;
+  background: rgba(224,64,251,0.12);
+}
+.mic-btn.mic--listening .mic-ring {
+  border-color: rgba(224,64,251,0.5);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+.mic-btn.mic--speaking {
+  color: rgba(155,0,245,0.8);
+  border-color: rgba(155,0,245,0.5);
+}
+@keyframes mic-pulse {
+  0%, 100% { transform: scale(1);   opacity: 0.6; }
+  50%       { transform: scale(1.2); opacity: 0.2; }
+}
 
 .send-btn {
   font-family: inherit; font-size: 15px; font-weight: 600; color: #fff;
-  background: #9b00f5; border: none; border-radius: 10px; padding: 14px 26px;
+  background: #9b00f5; border: none; border-radius: 10px; padding: 14px 22px;
   cursor: pointer; letter-spacing: 0.04em;
   transition: background 0.2s, transform 0.1s; white-space: nowrap;
+  flex-shrink: 0;
 }
 .send-btn:hover:not(:disabled)  { background: #b520ff; }
 .send-btn:active:not(:disabled) { transform: scale(0.96); }
 .send-btn:disabled              { opacity: 0.4; cursor: not-allowed; }
+
+/* ─── User uploaded image ─── */
+
+.bubble--user-image {
+  align-self: flex-end;
+  max-width: 72%; padding: 6px; border-radius: 14px;
+  background: #9b00f5; border-bottom-right-radius: 4px;
+  display: flex; flex-direction: column; gap: 4px;
+  animation: pop-in 0.18s ease-out;
+}
+.user-uploaded-img {
+  width: 100%; max-width: 280px; border-radius: 10px; display: block;
+}
+.bubble--user-file {
+  align-self: flex-end;
+  background: rgba(155,0,245,0.7); border: 1px solid rgba(155,0,245,0.5);
+  border-bottom-right-radius: 4px;
+  font-size: 14px; color: rgba(255,255,255,0.9);
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-radius: 12px; animation: pop-in 0.18s ease-out;
+}
+.file-icon { font-size: 18px; }
 
 /* ─── Images ─── */
 

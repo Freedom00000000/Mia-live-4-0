@@ -250,6 +250,17 @@ body {
 .modal-btn:hover  { background: #b520ff; }
 .modal-btn:active { transform: scale(0.97); }
 
+/* ─── Mood glow on title ─── */
+
+[data-mood="varm"] .mia-title {
+  background: linear-gradient(135deg, #9b00f5 0%, #e05500 100%);
+  transition: background 1.5s ease;
+}
+[data-mood="dyb"] .mia-title {
+  background: linear-gradient(135deg, #9b00f5 0%, #cc0066 100%);
+  transition: background 1.5s ease;
+}
+
 /* ─── Responsive ─── */
 
 @media (max-width: 420px) {

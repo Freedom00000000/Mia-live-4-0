@@ -1,6 +1,7 @@
 // ── Groq config ────────────────────────────────────────────────────────────
-// Free key at https://console.groq.com — no credit card required
-const GROQ_API_KEY = "";
+// Nøglen gemmes i din browser — aldrig i koden. Hent gratis på console.groq.com
+const GROQ_KEY_STORAGE = "mia_groq_key";
+let GROQ_API_KEY = localStorage.getItem(GROQ_KEY_STORAGE) || "";
 
 document.addEventListener("DOMContentLoaded", function () {
   const clearBtn       = document.getElementById("clearBtn");
@@ -754,8 +755,20 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     return GROQ_MODELS.chat;
   }
 
+  function promptForGroqKey() {
+    const key = window.prompt(
+      "Indtast din Groq API-nøgle (gratis på console.groq.com):\nDen gemmes kun i din browser."
+    );
+    if (key && key.trim().startsWith("gsk_")) {
+      GROQ_API_KEY = key.trim();
+      localStorage.setItem(GROQ_KEY_STORAGE, GROQ_API_KEY);
+      return true;
+    }
+    return false;
+  }
+
   async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
-    if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY ikke sat");
+    if (!GROQ_API_KEY && !promptForGroqKey()) throw new Error("Ingen API-nøgle");
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {

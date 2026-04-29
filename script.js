@@ -1,7 +1,4 @@
 document.addEventListener("DOMContentLoaded", function () {
-  const sendBtn        = document.getElementById("sendBtn");
-  const userInput      = document.getElementById("userInput");
-  const chatLog        = document.getElementById("chatLog");
   const clearBtn       = document.getElementById("clearBtn");
   const affectionBadge = document.getElementById("affectionBadge");
   const sendBtn      = document.getElementById("sendBtn");

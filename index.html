@@ -39,7 +39,10 @@
     <header class="app-header">
       <div class="header-top">
         <h1 class="mia-title">MIA</h1>
-        <button id="clearBtn" class="clear-btn" title="Ryd samtale" aria-label="Ryd samtalehistorik">↺</button>
+        <div class="header-actions">
+          <button id="exportBtn" class="clear-btn" title="Eksporter samtale" aria-label="Download samtale">↓</button>
+          <button id="clearBtn" class="clear-btn" title="Ryd samtale" aria-label="Ryd samtalehistorik">↺</button>
+        </div>
       </div>
       <p class="mia-subtitle">Din AI-følgesvend</p>
       <span id="affectionLabel" class="affection-label affection--ny">Ny forbindelse</span>
@@ -61,14 +64,14 @@
       </label>
       <input id="fileInput" type="file" accept="image/*,.txt,.md,.csv,.json,.js,.py,.html,.css,.ts,.jsx,.tsx,.xml,.yaml,.yml,.sh,.log" hidden aria-hidden="true">
 
-      <input
-        type="text"
+      <textarea
         id="userInput"
         class="chat-input"
         placeholder="Skriv til MIA…"
         autocomplete="off"
+        rows="1"
         disabled
-      />
+      ></textarea>
 
       <!-- Mic / live voice -->
       <button id="micBtn" class="icon-btn mic-btn" title="Tal til MIA" aria-label="Stemmeindput" disabled>
@@ -83,6 +86,15 @@
 
       <button id="sendBtn" class="send-btn" disabled>Send</button>
     </footer>
+  </div>
+
+  <!-- Memory panel -->
+  <div id="memoryPanel" class="memory-panel">
+    <div class="memory-panel__header">
+      <span class="memory-panel__title">Hvad MIA husker</span>
+      <button id="memoryClose" class="memory-close" aria-label="Luk">&times;</button>
+    </div>
+    <div id="memoryContent" class="memory-panel__content"></div>
   </div>
 
   <script src="script.js"></script>

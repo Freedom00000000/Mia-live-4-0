@@ -40,6 +40,7 @@
       <div class="header-top">
         <h1 class="mia-title">MIA</h1>
         <div class="header-actions">
+          <button id="roleBtn" class="clear-btn" title="Rolle &amp; Prompt" aria-label="Tilpas MIA">⚙</button>
           <button id="exportBtn" class="clear-btn" title="Eksporter samtale" aria-label="Download samtale">↓</button>
           <button id="clearBtn" class="clear-btn" title="Ryd samtale" aria-label="Ryd samtalehistorik">↺</button>
         </div>
@@ -86,6 +87,21 @@
 
       <button id="sendBtn" class="send-btn" disabled>Send</button>
     </footer>
+  </div>
+
+  <!-- Role / prompt panel -->
+  <div id="rolePanel" class="memory-panel">
+    <div class="memory-panel__header">
+      <span class="memory-panel__title">Rolle &amp; Prompt</span>
+      <button id="roleClose" class="memory-close" aria-label="Luk">&times;</button>
+    </div>
+    <div class="role-body">
+      <p class="role-label">Vælg MIAs rolle</p>
+      <div id="rolePills" class="role-pills"></div>
+      <p class="role-label role-label--mt">Tilpasset instruktion</p>
+      <textarea id="customPromptInput" class="role-prompt-input" placeholder="Skriv dine egne instruktioner til MIA — de tilføjes sidst i hendes prompt…" rows="3"></textarea>
+      <button id="roleSaveBtn" class="role-save-btn">Gem ændringer</button>
+    </div>
   </div>
 
   <!-- Memory panel -->

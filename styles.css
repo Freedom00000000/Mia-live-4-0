@@ -542,6 +542,51 @@ textarea.chat-input {
   color: rgba(155,0,245,0.75); margin-right: 5px;
 }
 
+/* ─── Role panel ─── */
+
+.role-body { display: flex; flex-direction: column; }
+
+.role-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.38); margin-bottom: 10px;
+}
+.role-label--mt { margin-top: 20px; }
+
+.role-pills { display: flex; flex-direction: column; gap: 8px; }
+
+.role-pill {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  background: rgba(155,0,245,0.06); border: 1px solid rgba(155,0,245,0.2);
+  border-radius: 10px; padding: 10px 14px; cursor: pointer; text-align: left;
+  transition: background 0.2s, border-color 0.2s;
+}
+.role-pill:hover { background: rgba(155,0,245,0.13); border-color: rgba(155,0,245,0.45); }
+.role-pill--active { background: rgba(155,0,245,0.2); border-color: #9b00f5; }
+
+.rp-emoji { font-size: 18px; flex-shrink: 0; }
+.rp-label { font-size: 14px; font-weight: 700; color: #fff; }
+.rp-desc  { font-size: 12px; color: rgba(255,255,255,0.38); margin-left: auto; text-align: right; }
+
+.role-prompt-input {
+  width: 100%; font-family: inherit; font-size: 14px; color: rgba(255,255,255,0.85);
+  background: rgba(44,37,44,0.8); border: 1px solid rgba(155,0,245,0.3);
+  border-radius: 10px; padding: 12px 14px; outline: none; resize: vertical;
+  min-height: 76px; max-height: 180px; line-height: 1.5;
+  transition: border-color 0.2s;
+}
+.role-prompt-input::placeholder { color: rgba(255,255,255,0.26); }
+.role-prompt-input:focus { border-color: #9b00f5; }
+
+.role-save-btn {
+  margin-top: 14px;
+  font-family: inherit; font-size: 14px; font-weight: 700; color: #fff;
+  background: #9b00f5; border: none; border-radius: 10px; padding: 12px;
+  cursor: pointer; letter-spacing: 0.04em;
+  transition: background 0.2s, transform 0.1s;
+}
+.role-save-btn:hover  { background: #b520ff; }
+.role-save-btn:active { transform: scale(0.97); }
+
 /* ─── Responsive ─── */
 
 @media (max-width: 420px) {

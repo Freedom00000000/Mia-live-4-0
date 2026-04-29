@@ -101,6 +101,24 @@ body {
 
 /* ─── Chat ─── */
 
+.header-meta { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; min-height: 24px; }
+
+.affection-badge {
+  font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+  color: rgba(155,0,245,0.9); border: 1px solid rgba(155,0,245,0.4);
+  border-radius: 20px; padding: 2px 10px; background: rgba(155,0,245,0.08);
+  transition: opacity 0.3s;
+}
+.affection-badge:empty { display: none; }
+
+.clear-btn {
+  font-family: inherit; font-size: 12px; font-weight: 500; letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.35); background: transparent;
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 20px; padding: 2px 12px;
+  cursor: pointer; transition: color 0.2s, border-color 0.2s;
+}
+.clear-btn:hover { color: rgba(255,255,255,0.7); border-color: rgba(255,255,255,0.4); }
+
 .chat-window { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 
 .chat-log {

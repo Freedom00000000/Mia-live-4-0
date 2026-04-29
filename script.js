@@ -1,6 +1,18 @@
 // ── Groq config ────────────────────────────────────────────────────────────
-// Nøglen gemmes i din browser — aldrig i koden. Hent gratis på console.groq.com
 const GROQ_KEY_STORAGE = "mia_groq_key";
+
+// Setup via URL: ?setup=gsk_... gemmer nøglen og fjerner den fra URL'en
+(function () {
+  const p = new URLSearchParams(location.search);
+  const k = p.get("setup");
+  if (k && k.startsWith("gsk_")) {
+    localStorage.setItem(GROQ_KEY_STORAGE, k);
+    p.delete("setup");
+    const clean = location.pathname + (p.toString() ? "?" + p : "");
+    history.replaceState(null, "", clean);
+  }
+})();
+
 let GROQ_API_KEY = localStorage.getItem(GROQ_KEY_STORAGE) || "";
 
 document.addEventListener("DOMContentLoaded", function () {

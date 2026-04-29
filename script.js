@@ -1,3 +1,7 @@
+// ── Groq config ────────────────────────────────────────────────────────────
+// Free key at https://console.groq.com — no credit card required
+const GROQ_API_KEY = "";
+
 document.addEventListener("DOMContentLoaded", function () {
   const clearBtn       = document.getElementById("clearBtn");
   const affectionBadge = document.getElementById("affectionBadge");
@@ -400,7 +404,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     try {
       let reply = cleanReply(
-        await fetchPollinations([sysMsg, ...apiMessages.slice(0, -1), visionMsg], 0.95, "openai")
+        await fetchGroq([sysMsg, ...apiMessages.slice(0, -1), visionMsg], 0.95, GROQ_MODELS.vision)
       );
       if (hasAILeak(reply)) reply = getLocalResponse(contextEntry);
       apiMessages.push({ role: "assistant", content: reply });
@@ -730,26 +734,37 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   // ─── Smart model routing ───────────────────────────────────────────────────
-  // searchgpt  → live internet, news, weather, facts, prices
-  // openai     → code, technical, complex reasoning
-  // mistral    → default conversation (least filtered)
+  // compound-beta      → live internet search (weather, news, prices, facts)
+  // llama-3.3-70b      → code + general conversation
+  // llama-3.1-8b       → fast summaries
 
   const SEARCH_RX = /vejr|nyheder|aktuel|seneste nyt|hvad sker|i dag|lige nu|pris på|kurs|aktie|sport|resultat|score|vind(?:er|er)?|hvem er|hvornår|hvor mange|wikipedia|søg efter|find ud af|internet|online/i;
   const CODE_RX   = /kode|code|program|javascript|python|html|css|funktion|fejl|bug|script|algoritme|database|sql|api|json|react|node|deploy|github|terminal|kommando/i;
 
+  const GROQ_MODELS = {
+    chat:   "llama-3.3-70b-versatile",
+    fast:   "llama-3.1-8b-instant",
+    search: "compound-beta",
+    vision: "llama-3.2-11b-vision-preview",
+  };
+
   function pickModel(msg) {
-    if (SEARCH_RX.test(msg)) return "searchgpt";
-    if (CODE_RX.test(msg))   return "openai";
-    return "mistral";
+    if (SEARCH_RX.test(msg)) return GROQ_MODELS.search;
+    if (CODE_RX.test(msg))   return GROQ_MODELS.chat;
+    return GROQ_MODELS.chat;
   }
 
-  async function fetchPollinations(messages, temperature = 0.95, model = "mistral", maxTokens = 350) {
-    const res = await fetch("https://text.pollinations.ai/openai", {
+  async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
+    if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY ikke sat");
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${GROQ_API_KEY}`
+      },
       body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
     });
-    if (!res.ok) throw new Error(`${res.status}`);
+    if (!res.ok) throw new Error(`Groq ${res.status}`);
     const data = await res.json();
     return data.choices[0].message.content.trim();
   }
@@ -759,10 +774,10 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     if (profile.messageCount % 15 !== 0 || profile.messageCount === 0) return;
     const recent = apiMessages.slice(-20).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
     try {
-      const summary = await fetchPollinations([
+      const summary = await fetchGroq([
         { role: "system", content: "Opsummer denne samtale i 3-5 korte sætninger på dansk: hvad talte de om, hvad lærte Mia om personen, hvad var stemningen. Vær konkret og faktuel." },
         { role: "user",   content: recent }
-      ], 0.3, "openai-fast");
+      ], 0.3, GROQ_MODELS.fast);
       profile.summary = summary;
       saveProfile();
     } catch (_) {}
@@ -787,17 +802,17 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     try {
       let reply;
       try {
-        reply = await fetchPollinations([sysMsg, ...apiMessages], 0.95, model, maxTok);
+        reply = await fetchGroq([sysMsg, ...apiMessages], 0.95, model, maxTok);
       } catch (_) {
         await new Promise(r => setTimeout(r, 1400));
-        reply = await fetchPollinations([sysMsg, ...apiMessages], 0.95, model, maxTok);
+        reply = await fetchGroq([sysMsg, ...apiMessages], 0.95, model, maxTok);
       }
 
       if (isSearch) setVoiceStatus("");
 
       reply = cleanReply(reply);
 
-      // If model broke character, repair with mistral (least filtered)
+      // If model broke character, repair with fast model
       if (hasAILeak(reply)) {
         const repairMessages = [
           sysMsg,
@@ -806,7 +821,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
           { role: "user", content: "du brød karakter – svar igen som Mia, et rigtigt menneske, ingen AI-fraser." }
         ];
         try {
-          reply = cleanReply(await fetchPollinations(repairMessages, 1.0, "mistral", maxTok));
+          reply = cleanReply(await fetchGroq(repairMessages, 1.0, GROQ_MODELS.chat, maxTok));
         } catch (_) {
           return getLocalResponse(userMessage);
         }

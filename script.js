@@ -139,11 +139,24 @@ document.addEventListener("DOMContentLoaded", function () {
     else profile.patterns.tone = "neutral";
   }
 
+  const STOPWORDS = new Set([
+    "hans","min","din","sin","vores","jeres","deres","det","den","der","her",
+    "når","ved","til","fra","for","med","ikke","også","men","jeg","dig","mig",
+    "ham","hun","dem","sig","kan","vil","har","var","blev","gik","kom","bare",
+    "lige","noget","nogen","mange","alle","ingen","hvad","hvem","hvor","dette",
+    "disse","sådan","selv","altså","igen","okay","godt","meget","lidt","mere",
+    "mest","over","under","efter","inden","uden","eller","fordi","mens","siden",
+    "faktisk","egentlig","alligevel","næsten","aldrig","altid","tror","synes",
+    "hedder","bliver","skulle","kunne","måtte","burde","ville","gerne","heller",
+    "bare","netop","bare","igen","bare","endnu","stadig","allerede","snart",
+    "ellers","måske","sikkert","nok","bare","helt","rigtig","rigtige","sådan"
+  ]);
+
   function learn(msg) {
     profile.messageCount++;
     profile.affection = Math.min(100, profile.affection + 1);
     msg.toLowerCase().split(/\W+/).forEach(w => {
-      if (w.length > 3) profile.topics[w] = (profile.topics[w] || 0) + 1;
+      if (w.length > 3 && !STOPWORDS.has(w)) profile.topics[w] = (profile.topics[w] || 0) + 1;
     });
     extractFacts(msg);
     updatePatterns(msg);
@@ -763,19 +776,44 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   function promptForGroqKey() {
-    const key = window.prompt(
-      "Indtast din Groq API-nøgle (gratis på console.groq.com):\nDen gemmes kun i din browser."
-    );
-    if (key && key.trim().startsWith("gsk_")) {
-      GROQ_API_KEY = key.trim();
-      localStorage.setItem(GROQ_KEY_STORAGE, GROQ_API_KEY);
-      return true;
-    }
-    return false;
+    return new Promise(resolve => {
+      const modal = document.getElementById("apiKeyModal");
+      const form  = document.getElementById("apiKeyForm");
+      const input = document.getElementById("apiKeyInput");
+      const err   = document.getElementById("apiKeyError");
+      if (!modal) { resolve(false); return; }
+      err.textContent = "";
+      modal.classList.add("modal--visible");
+      setTimeout(() => input.focus(), 60);
+      function onSubmit(e) {
+        e.preventDefault();
+        const key = input.value.trim();
+        if (!key.startsWith("gsk_")) {
+          err.textContent = "Nøglen skal starte med gsk_";
+          return;
+        }
+        GROQ_API_KEY = key;
+        localStorage.setItem(GROQ_KEY_STORAGE, key);
+        modal.classList.remove("modal--visible");
+        form.removeEventListener("submit", onSubmit);
+        resolve(true);
+      }
+      form.addEventListener("submit", onSubmit);
+    });
+  }
+
+  const apiKeyBtn = document.getElementById("apiKeyBtn");
+  if (apiKeyBtn) {
+    apiKeyBtn.addEventListener("click", async () => {
+      await promptForGroqKey();
+    });
   }
 
   async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
-    if (!GROQ_API_KEY && !promptForGroqKey()) throw new Error("Ingen API-nøgle");
+    if (!GROQ_API_KEY) {
+      const ok = await promptForGroqKey();
+      if (!ok) throw new Error("Ingen API-nøgle");
+    }
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -1251,7 +1289,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       await displayResponse(raw);
       saveHistory();
       resetAutonomyTimer();
-    }, 28000 + Math.random() * 22000);
+    }, 8 * 60000 + Math.random() * 12 * 60000);
   }
 
   // ─── Clear chat ────────────────────────────────────────────────────────────
@@ -1465,6 +1503,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   // ─── Unlock ────────────────────────────────────────────────────────────────
 
   async function unlockMia() {
+    if (!GROQ_API_KEY) await promptForGroqKey();
     loadHistory();
     updateAffectionLabel();
     const who      = profile.name || "dig";

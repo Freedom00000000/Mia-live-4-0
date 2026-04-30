@@ -956,7 +956,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   // ─── Image generation ──────────────────────────────────────────────────────
 
-  const imageRx = /billede|tegn|generer|draw|paint|foto af|lav.*af|vis mig|forestil dig/i;
+  const imageRx = /(?:lav|tegn|generer|draw|paint|vis mig)\s.{0,30}(?:billede|tegning|foto|portræt|illustration)|(?:billede|foto|tegning)\s+af\b/i;
   function isImageRequest(msg) { return imageRx.test(msg); }
 
   function extractImagePrompt(msg) {
@@ -1384,8 +1384,8 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       if (ci) profile.customPrompt = ci.value.trim();
       saveProfile();
       rolePanelEl?.classList.remove("memory-panel--open");
-      roleSaveBtn.textContent = "Gemt ✓";
-      setTimeout(() => { roleSaveBtn.textContent = "Gem ændringer"; }, 2000);
+      roleSaveBtn.textContent = "Aktiveret ✓";
+      setTimeout(() => { roleSaveBtn.textContent = "Gem & Aktivér"; }, 2000);
 
       const roleChanged   = profile.role    !== panelOpenRole;
       const promptChanged = profile.customPrompt !== panelOpenPrompt;
@@ -1394,13 +1394,13 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       const roleData = ROLES[profile.role];
       let trigger;
       if (roleChanged && promptChanged && profile.customPrompt) {
-        trigger = `[SYSTEM: Rolle skiftet til "${roleData.label}" og nye instruktioner aktiveret: "${profile.customPrompt}". Træd ind i rollen med det samme og vis naturligt at du har taget instruktionerne til dig.]`;
+        trigger = `[SYSTEM – TEST: Rolle er nu "${roleData.label}". Instruktioner: "${profile.customPrompt}". Vis i ét autentisk svar at BEGGE dele er aktive – vær rollen, følg instruktionerne. Ikke en bekræftelse, men selve adfærden i praksis.]`;
       } else if (roleChanged) {
-        trigger = `[SYSTEM: Rolle skiftet til "${roleData.label}". Træd ind i rollen med det samme – ét naturligt svar der viser hvem du nu er i denne rolle.]`;
+        trigger = `[SYSTEM – TEST: Rolle er nu "${roleData.label}". Vis i ét autentisk svar præcis hvem du er i denne rolle. Ikke en beskrivelse af rollen – VÆR den. Første ord, første sætning skal bevise at skiftet er sket.]`;
       } else if (profile.customPrompt) {
-        trigger = `[SYSTEM: Nye instruktioner aktiveret: "${profile.customPrompt}". Kvitter kort og naturligt – vis at du har taget dem til dig og er klar.]`;
+        trigger = `[SYSTEM – TEST: Nye instruktioner er aktive: "${profile.customPrompt}". Demonstrér med ét konkret svar at du har forstået og adopteret dem – vis dem i aktion. Ikke "jeg har forstået", men selve adfærden.]`;
       } else {
-        trigger = `[SYSTEM: Instruktioner nulstillet. Vend tilbage til din grundlæggende rolle som ${roleData.label}.]`;
+        trigger = `[SYSTEM – TEST: Instruktioner nulstillet. Du er nu tilbage i din grundlæggende rolle som ${roleData.label}. Vis det kort.]`;
       }
 
       sendBtn.disabled   = true;

@@ -1354,6 +1354,9 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     });
   }
 
+  let panelOpenRole   = profile.role;
+  let panelOpenPrompt = profile.customPrompt;
+
   if (roleBtn) {
     roleBtn.addEventListener("click", () => {
       if (!rolePanelEl) return;
@@ -1361,6 +1364,8 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         rolePanelEl.classList.remove("memory-panel--open");
       } else {
         if (memoryPanel) memoryPanel.classList.remove("memory-panel--open");
+        panelOpenRole   = profile.role;
+        panelOpenPrompt = profile.customPrompt;
         buildRolePills();
         const ci = document.getElementById("customPromptInput");
         if (ci) ci.value = profile.customPrompt || "";
@@ -1374,13 +1379,39 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   const roleSaveBtn = document.getElementById("roleSaveBtn");
   if (roleSaveBtn) {
-    roleSaveBtn.addEventListener("click", () => {
+    roleSaveBtn.addEventListener("click", async () => {
       const ci = document.getElementById("customPromptInput");
       if (ci) profile.customPrompt = ci.value.trim();
       saveProfile();
       rolePanelEl?.classList.remove("memory-panel--open");
       roleSaveBtn.textContent = "Gemt ✓";
       setTimeout(() => { roleSaveBtn.textContent = "Gem ændringer"; }, 2000);
+
+      const roleChanged   = profile.role    !== panelOpenRole;
+      const promptChanged = profile.customPrompt !== panelOpenPrompt;
+      if (!roleChanged && !promptChanged) return;
+
+      const roleData = ROLES[profile.role];
+      let trigger;
+      if (roleChanged && promptChanged && profile.customPrompt) {
+        trigger = `[SYSTEM: Rolle skiftet til "${roleData.label}" og nye instruktioner aktiveret: "${profile.customPrompt}". Træd ind i rollen med det samme og vis naturligt at du har taget instruktionerne til dig.]`;
+      } else if (roleChanged) {
+        trigger = `[SYSTEM: Rolle skiftet til "${roleData.label}". Træd ind i rollen med det samme – ét naturligt svar der viser hvem du nu er i denne rolle.]`;
+      } else if (profile.customPrompt) {
+        trigger = `[SYSTEM: Nye instruktioner aktiveret: "${profile.customPrompt}". Kvitter kort og naturligt – vis at du har taget dem til dig og er klar.]`;
+      } else {
+        trigger = `[SYSTEM: Instruktioner nulstillet. Vend tilbage til din grundlæggende rolle som ${roleData.label}.]`;
+      }
+
+      sendBtn.disabled   = true;
+      userInput.disabled = true;
+      appendTyping();
+      const response = await callMiaAI(trigger);
+      await displayResponse(response);
+      saveHistory();
+      sendBtn.disabled   = false;
+      userInput.disabled = false;
+      userInput.focus();
     });
   }
 

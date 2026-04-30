@@ -64,12 +64,12 @@ document.addEventListener("DOMContentLoaded", function () {
   let apiMessages = JSON.parse(localStorage.getItem(API_CTX_KEY) || "[]");
 
   function saveProfile() { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); }
-  function saveApiCtx()  { localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages.slice(-60))); }
+  function saveApiCtx()  { localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages)); }
 
   // ─── History ───────────────────────────────────────────────────────────────
 
   function saveHistory() {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(conversationHistory.slice(-60)));
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(conversationHistory));
   }
 
   function affectionLevel() {
@@ -389,7 +389,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // Log a text placeholder for context continuity
     const contextEntry = `[delte billede: ${filename}]`;
     apiMessages.push({ role: "user", content: contextEntry });
-    if (apiMessages.length > 60) apiMessages = apiMessages.slice(-60);
 
     try {
       let reply = cleanReply(
@@ -513,8 +512,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function getMaxTokens(a) {
-    if (!a) return 500;
-    return { micro: 240, short: 440, medium: 750, long: 1100, deep: 1500 }[a.length] ?? 500;
+    if (!a) return 1000;
+    return { micro: 500, short: 900, medium: 1800, long: 3500, deep: 8000 }[a.length] ?? 1000;
   }
 
   function buildAdaptLine(a) {
@@ -793,7 +792,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   // Every 15 messages, compress recent context into a summary MIA can reference
   async function maybeUpdateSummary() {
     if (profile.messageCount % 15 !== 0 || profile.messageCount === 0) return;
-    const recent = apiMessages.slice(-20).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
+    const recent = apiMessages.slice(-60).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
     try {
       const summary = await fetchGroq([
         { role: "system", content: "Opsummer denne samtale i 3-5 korte sætninger på dansk: hvad talte de om, hvad lærte Mia om personen, hvad var stemningen. Vær konkret og faktuel." },
@@ -814,7 +813,6 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   async function callMiaAI(userMessage) {
     apiMessages.push({ role: "user", content: userMessage });
-    if (apiMessages.length > 60) apiMessages = apiMessages.slice(-60);
 
     const model    = pickModel(userMessage);
     const isSearch = model === GROQ_MODELS.search;
@@ -871,8 +869,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
       lastMiaReply = reply;
       apiMessages.push({ role: "assistant", content: reply });
-      if (apiMessages.length > 60) apiMessages = apiMessages.slice(-60);
-      saveApiCtx();
+        saveApiCtx();
       maybeUpdateSummary();
       return reply;
 

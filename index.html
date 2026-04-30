@@ -40,6 +40,7 @@
       <div class="header-top">
         <h1 class="mia-title">MIA</h1>
         <div class="header-actions">
+          <button id="apiKeyBtn" class="clear-btn" title="Groq API-nøgle" aria-label="Indstil API-nøgle">🔑</button>
           <button id="roleBtn" class="clear-btn" title="Rolle &amp; Prompt" aria-label="Tilpas MIA">⚙</button>
           <button id="exportBtn" class="clear-btn" title="Eksporter samtale" aria-label="Download samtale">↓</button>
           <button id="clearBtn" class="clear-btn" title="Ryd samtale" aria-label="Ryd samtalehistorik">↺</button>
@@ -115,6 +116,23 @@
       <button id="memoryClose" class="memory-close" aria-label="Luk">&times;</button>
     </div>
     <div id="memoryContent" class="memory-panel__content"></div>
+  </div>
+
+  <!-- API key modal -->
+  <div id="apiKeyModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle">
+    <div class="modal-box">
+      <div class="modal-avatar">🔑</div>
+      <h2 id="apiKeyTitle" class="modal-title">Groq API-nøgle</h2>
+      <p class="modal-desc">Gratis på <strong>console.groq.com</strong> — gemmes kun i din browser</p>
+      <form id="apiKeyForm" class="modal-form" novalidate>
+        <div class="modal-field">
+          <label for="apiKeyInput">API-nøgle</label>
+          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="gsk_…">
+        </div>
+        <p id="apiKeyError" class="modal-error" aria-live="polite"></p>
+        <button type="submit" class="modal-btn">Gem nøgle</button>
+      </form>
+    </div>
   </div>
 
   <script src="script.js"></script>

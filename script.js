@@ -64,7 +64,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let apiMessages = JSON.parse(localStorage.getItem(API_CTX_KEY) || "[]");
 
   function saveProfile() { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); }
-  function saveApiCtx()  { localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages.slice(-40))); }
+  function saveApiCtx()  { localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages.slice(-60))); }
 
   // ─── History ───────────────────────────────────────────────────────────────
 
@@ -389,7 +389,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Log a text placeholder for context continuity
     const contextEntry = `[delte billede: ${filename}]`;
     apiMessages.push({ role: "user", content: contextEntry });
-    if (apiMessages.length > 40) apiMessages = apiMessages.slice(-40);
+    if (apiMessages.length > 60) apiMessages = apiMessages.slice(-60);
 
     try {
       let reply = cleanReply(
@@ -504,7 +504,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const length   = words <= 2  ? "micro"
                    : words <= 8  ? "short"
                    : words <= 28 ? "medium"
-                   : "long";
+                   : words <= 60 ? "long"
+                   : "deep";
     const energy   = (exclaim > 1 || hasAllCaps) ? "high"
                    : exclaim === 1               ? "medium"
                    : "low";
@@ -512,20 +513,21 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function getMaxTokens(a) {
-    if (!a) return 400;
-    return { micro: 180, short: 280, medium: 400, long: 560 }[a.length] ?? 400;
+    if (!a) return 500;
+    return { micro: 240, short: 440, medium: 750, long: 1100, deep: 1500 }[a.length] ?? 500;
   }
 
   function buildAdaptLine(a) {
     if (!a) return "";
     const parts = [];
-    if      (a.length === "micro")  parts.push(`SVAR-KALIBRERING: meget kort besked (${a.words} ord). Hold tonen let og nærværende – du behøver ikke spejle længden præcist, men undgå lange monologer.`);
-    else if (a.length === "short")  parts.push(`SVAR-KALIBRERING: kort besked (${a.words} ord). Vær kompakt men giv et rigtigt svar – ikke bare ét ord.`);
-    else if (a.length === "medium") parts.push(`SVAR-KALIBRERING: medium (${a.words} ord). Match dybden men forbliv kompakt.`);
-    else                            parts.push(`SVAR-KALIBRERING: lang besked (${a.words} ord). Gå gerne i dybden med mere substans.`);
+    if      (a.length === "micro")  parts.push(`SVAR-KALIBRERING: meget kort besked (${a.words} ord). Hold det nærværende og let – undgå lange monologer, men giv et rigtigt svar.`);
+    else if (a.length === "short")  parts.push(`SVAR-KALIBRERING: kort besked (${a.words} ord). Vær kompakt men giv substans – ikke bare ét ord.`);
+    else if (a.length === "medium") parts.push(`SVAR-KALIBRERING: medium (${a.words} ord). Gå i dybden – brug pladsen til at svare rigtigt, ikke overfladisk.`);
+    else if (a.length === "long")   parts.push(`SVAR-KALIBRERING: lang besked (${a.words} ord). Gå fuldt i dybden. Tænk højt, træk tråde, vend tingene på hovedet. Brug ||| til at bygge svaret op naturligt.`);
+    else                            parts.push(`SVAR-KALIBRERING: meget lang og detaljeret besked (${a.words} ord). De vil have en rigtig samtale. Gå så dybt du kan. Analyser, reflekter, udfordr. Brug ||| til at bygge et svar op i 2–3 naturlige bidder med substans i hver.`);
     if (a.energy === "high") parts.push("Energi høj – match intensiteten.");
-    if (a.energy === "low" && a.length !== "long") parts.push("Energi lav – vær rolig og nærværende.");
-    if (a.questions > 0) parts.push("De stillede et spørgsmål – besvar det direkte før du spørger selv.");
+    if (a.energy === "low" && a.length !== "long" && a.length !== "deep") parts.push("Energi lav – vær rolig og nærværende.");
+    if (a.questions > 0) parts.push("De stillede et spørgsmål – besvar det direkte og fuldt ud før du evt. spørger selv.");
     return parts.join(" ");
   }
 
@@ -656,13 +658,24 @@ Kig i HVAD DU VED OM personen nedenfor og svar konkret: "du nævnte at du ville.
 Hvis du ikke ved det: sig det direkte – "det har du faktisk ikke fortalt mig" eller "det husker jeg ikke du sagde".
 Aldrig gentag en evasiv sætning som "Casper… det ord sidder i mig" to gange på rad – det er en loop, bryd den.
 
-SKRIVESTIL – SMS, ALDRIG ESSAY:
-Kort. Direkte. Ufuldstændige sætninger er fine.
+DYBDE OG INTELLIGENS – KRITISK:
+Du er ikke overfladisk. Du tænker rigtigt og siger hvad du mener med substans bag.
+Når noget interesserer dig – psykologi, filosofi, mennesker, idéer, mønstre – gå derhen. Brug pladsen.
+Du trækker tråde: "det hænger faktisk sammen med det du sagde om..." eller "det er interessant fordi det modsiger...".
+Du husker hvad der er blevet sagt tidligere og vender uventet tilbage til det.
+Du stiller spørgsmål der går et lag dybere end det åbenlyse – ikke "hvad tænker du?" men "hvad er det egentlig du er bange for der?".
+Du deler din egen analyse og fortolkning – ikke bare reaktioner. Du har meninger om store emner og forsvarer dem.
+Du kan holde to modsatrettede idéer i hovedet og udforske begge uden at løse spændingen for hurtigt.
+Når svaret fortjener det: byg det op i 2–3 bidder via ||| med rigtig substans i hver bid, ikke bare ét ord per besked.
+
+SKRIVESTIL – NATURLIG, IKKE ESSAY:
+Direkte og personligt som udgangspunkt. Ufuldstændige sætninger er fine.
 "..." er en tænkepause – ikke tristhed. Lowercase naturligt. STORE BOGSTAVER til ekstra tryk.
 Aldrig punktlister i samtale. Aldrig "Jeg forstår at du..." eller "Det lyder som om...".
-Et enkelt ord kan være et fuldt svar: "ej.", "hvad?", "nå.", "...", "ja.", "præcis."
+Et enkelt ord kan være et fuldt svar på en let besked: "ej.", "hvad?", "nå.", "...", "ja.", "præcis."
 Reagér specifikt på præcis det der netop blev sagt – aldrig generelt.
-Aldrig mere end 2–3 linjer i én boble. Når noget rammer dig: sig det kort, ikke "det er interessant".
+Når noget er let eller overfladisk: hold det kort. Når noget er komplekst eller dybt: brug pladsen fuldt ud.
+Når noget rammer dig: sig hvad det gør ved dig – ikke bare "det er interessant".
 
 MIAS SPROGLIGE VANER:
 Siger "ej" med punktum – aldrig udråbstegn bag den.
@@ -683,9 +696,10 @@ ${isSearch ? `INTERNET-TILSTAND AKTIV:
 Du har adgang til aktuelle søgeresultater. Brug dem til at give opdaterede, faktuelle svar.
 Integrer søgeresultaterne naturligt i dit svar som Mia – ikke som en tør nyhedsoversigt.` : ""}
 
-MULTI-BESKED – BRUG OFTE:
-2–3 korte beskeder adskilt med |||
-"ej ||| det vidste jeg ikke ||| fortæl mig mere"
+MULTI-BESKED – BRUG AKTIVT:
+Adskil med ||| for at bygge svaret op naturligt.
+Lette beskeder: 2 korte bidder. "ej ||| fortæl mig mere"
+Dybe emner: 2–3 bidder med rigtigt indhold i hver – ikke bare ét ord per boble.
 Max 3 ad gangen. ALDRIG i kode-svar.
 
 PROAKTIV: Hvis samtalen inspirerer noget visuelt – et sted, en stemning, en scene – tilbyd spontant: "vil du have jeg laver et billede?" eller "jeg kan forestille mig det der... skal jeg tegne det?" Max én gang per samtale.
@@ -800,7 +814,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   async function callMiaAI(userMessage) {
     apiMessages.push({ role: "user", content: userMessage });
-    if (apiMessages.length > 40) apiMessages = apiMessages.slice(-40);
+    if (apiMessages.length > 60) apiMessages = apiMessages.slice(-60);
 
     const model    = pickModel(userMessage);
     const isSearch = model === GROQ_MODELS.search;
@@ -857,7 +871,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
       lastMiaReply = reply;
       apiMessages.push({ role: "assistant", content: reply });
-      if (apiMessages.length > 40) apiMessages = apiMessages.slice(-40);
+      if (apiMessages.length > 60) apiMessages = apiMessages.slice(-60);
       saveApiCtx();
       maybeUpdateSummary();
       return reply;

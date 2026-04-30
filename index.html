@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIA</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="titan-background">
+    <div class="stars stars-L"></div>
+    <div class="stars stars-M"></div>
+    <div class="stars stars-S"></div>
+  </div>
+
+  <!-- Onboarding / password modal -->
+  <div id="miaModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-box">
+      <div class="modal-avatar">M</div>
+      <h2 id="modalTitle" class="modal-title">Velkommen til MIA</h2>
+      <p class="modal-desc">Din AI-følgesvend</p>
+      <form id="modalForm" class="modal-form" novalidate>
+        <div id="nameRow" class="modal-field">
+          <label for="modalName">Dit navn</label>
+          <input id="modalName" type="text" autocomplete="given-name" placeholder="Skriv dit navn…" maxlength="40">
+        </div>
+        <div class="modal-field">
+          <label for="modalPass">Adgangskode</label>
+          <input id="modalPass" type="password" autocomplete="current-password" placeholder="••••••">
+        </div>
+        <p id="modalError" class="modal-error" aria-live="polite"></p>
+        <button id="modalSubmit" type="submit" class="modal-btn">Åbn MIA</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-top">
+        <h1 class="mia-title">MIA</h1>
+        <div class="header-actions">
+          <button id="roleBtn" class="clear-btn" title="Rolle &amp; Prompt" aria-label="Tilpas MIA">⚙</button>
+          <button id="exportBtn" class="clear-btn" title="Eksporter samtale" aria-label="Download samtale">↓</button>
+          <button id="clearBtn" class="clear-btn" title="Ryd samtale" aria-label="Ryd samtalehistorik">↺</button>
+        </div>
+      </div>
+      <p class="mia-subtitle">Din AI-følgesvend</p>
+      <div class="header-meta">
+        <span id="affectionBadge" class="affection-badge" title="Forbindelsesniveau"></span>
+        <button id="clearBtn" class="clear-btn" title="Ryd samtalehistorik">Ryd</button>
+      </div>
+      <span id="affectionLabel" class="affection-label affection--ny">Ny forbindelse</span>
+    </header>
+
+    <main class="chat-window">
+      <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Samtale med MIA"></div>
+    </main>
+
+    <!-- Voice status bar -->
+    <div id="voiceStatus" class="voice-status" aria-live="polite"></div>
+
+    <footer class="input-row">
+      <!-- File upload -->
+      <label id="fileBtn" class="icon-btn file-btn" title="Del en fil" aria-label="Upload fil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+        </svg>
+      </label>
+      <input id="fileInput" type="file" accept="image/*,.txt,.md,.csv,.json,.js,.py,.html,.css,.ts,.jsx,.tsx,.xml,.yaml,.yml,.sh,.log" hidden aria-hidden="true">
+
+      <textarea
+        id="userInput"
+        class="chat-input"
+        placeholder="Skriv til MIA…"
+        autocomplete="off"
+        rows="1"
+        disabled
+      ></textarea>
+
+      <!-- Mic / live voice -->
+      <button id="micBtn" class="icon-btn mic-btn" title="Tal til MIA" aria-label="Stemmeindput" disabled>
+        <svg class="icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+        <span class="mic-ring"></span>
+      </button>
+
+      <button id="sendBtn" class="send-btn" disabled>Send</button>
+    </footer>
+  </div>
+
+  <!-- Role / prompt panel -->
+  <div id="rolePanel" class="memory-panel">
+    <div class="memory-panel__header">
+      <span class="memory-panel__title">Rolle &amp; Prompt</span>
+      <button id="roleClose" class="memory-close" aria-label="Luk">&times;</button>
+    </div>
+    <div class="role-body">
+      <p class="role-label">Vælg MIAs rolle</p>
+      <div id="rolePills" class="role-pills"></div>
+      <p class="role-label role-label--mt">Tilpasset instruktion</p>
+      <textarea id="customPromptInput" class="role-prompt-input" placeholder="Skriv dine egne instruktioner til MIA — de tilføjes sidst i hendes prompt…" rows="3"></textarea>
+      <button id="roleSaveBtn" class="role-save-btn">Gem ændringer</button>
+    </div>
+  </div>
+
+  <!-- Memory panel -->
+  <div id="memoryPanel" class="memory-panel">
+    <div class="memory-panel__header">
+      <span class="memory-panel__title">Hvad MIA husker</span>
+      <button id="memoryClose" class="memory-close" aria-label="Luk">&times;</button>
+    </div>
+    <div id="memoryContent" class="memory-panel__content"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

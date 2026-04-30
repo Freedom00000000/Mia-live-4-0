@@ -956,7 +956,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   // ─── Image generation ──────────────────────────────────────────────────────
 
-  const imageRx = /(?:lav|tegn|generer|draw|paint|vis mig)\s.{0,30}(?:billede|tegning|foto|portræt|illustration)|(?:billede|foto|tegning)\s+af\b/i;
+  const imageRx = /^(?:draw|paint|generate|create)\b|^(?:lav|tegn|generer|vis mig)\b.{0,50}(?:billede|tegning|foto|portræt|illustration)\b|\bbillede\s+af\b/i;
   function isImageRequest(msg) { return imageRx.test(msg); }
 
   function extractImagePrompt(msg) {
@@ -1334,19 +1334,22 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   // ─── Role & prompt panel ───────────────────────────────────────────────────
 
+  let selectedRole = profile.role;
+
   function buildRolePills() {
+    selectedRole = profile.role;
     const pillsEl = document.getElementById("rolePills");
     if (!pillsEl) return;
     pillsEl.innerHTML = "";
     Object.entries(ROLES).forEach(([key, role]) => {
       const pill = document.createElement("button");
-      pill.className = "role-pill" + (profile.role === key ? " role-pill--active" : "");
+      pill.className = "role-pill" + (selectedRole === key ? " role-pill--active" : "");
       const em = document.createElement("span"); em.className = "rp-emoji"; em.textContent = role.emoji;
       const lb = document.createElement("span"); lb.className = "rp-label"; lb.textContent = role.label;
       const ds = document.createElement("span"); ds.className = "rp-desc";  ds.textContent = role.desc;
       pill.append(em, lb, ds);
       pill.addEventListener("click", () => {
-        profile.role = key;
+        selectedRole = key;
         document.querySelectorAll(".role-pill").forEach(p => p.classList.remove("role-pill--active"));
         pill.classList.add("role-pill--active");
       });
@@ -1354,7 +1357,6 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     });
   }
 
-  let panelOpenRole   = profile.role;
   let panelOpenPrompt = profile.customPrompt;
 
   if (roleBtn) {
@@ -1364,7 +1366,6 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         rolePanelEl.classList.remove("memory-panel--open");
       } else {
         if (memoryPanel) memoryPanel.classList.remove("memory-panel--open");
-        panelOpenRole   = profile.role;
         panelOpenPrompt = profile.customPrompt;
         buildRolePills();
         const ci = document.getElementById("customPromptInput");
@@ -1381,37 +1382,51 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   if (roleSaveBtn) {
     roleSaveBtn.addEventListener("click", async () => {
       const ci = document.getElementById("customPromptInput");
-      if (ci) profile.customPrompt = ci.value.trim();
+      const prevRole   = profile.role;
+      const prevPrompt = profile.customPrompt;
+
+      profile.role         = selectedRole;
+      profile.customPrompt = ci ? ci.value.trim() : profile.customPrompt;
       saveProfile();
+
       rolePanelEl?.classList.remove("memory-panel--open");
       roleSaveBtn.textContent = "Aktiveret ✓";
       setTimeout(() => { roleSaveBtn.textContent = "Gem & Aktivér"; }, 2000);
 
-      const roleChanged   = profile.role    !== panelOpenRole;
-      const promptChanged = profile.customPrompt !== panelOpenPrompt;
+      const roleChanged   = profile.role         !== prevRole;
+      const promptChanged = profile.customPrompt !== prevPrompt;
       if (!roleChanged && !promptChanged) return;
 
+      // Show a system note in chat
       const roleData = ROLES[profile.role];
-      let trigger;
-      if (roleChanged && promptChanged && profile.customPrompt) {
-        trigger = `[SYSTEM – TEST: Rolle er nu "${roleData.label}". Instruktioner: "${profile.customPrompt}". Vis i ét autentisk svar at BEGGE dele er aktive – vær rollen, følg instruktionerne. Ikke en bekræftelse, men selve adfærden i praksis.]`;
-      } else if (roleChanged) {
-        trigger = `[SYSTEM – TEST: Rolle er nu "${roleData.label}". Vis i ét autentisk svar præcis hvem du er i denne rolle. Ikke en beskrivelse af rollen – VÆR den. Første ord, første sætning skal bevise at skiftet er sket.]`;
-      } else if (profile.customPrompt) {
-        trigger = `[SYSTEM – TEST: Nye instruktioner er aktive: "${profile.customPrompt}". Demonstrér med ét konkret svar at du har forstået og adopteret dem – vis dem i aktion. Ikke "jeg har forstået", men selve adfærden.]`;
-      } else {
-        trigger = `[SYSTEM – TEST: Instruktioner nulstillet. Du er nu tilbage i din grundlæggende rolle som ${roleData.label}. Vis det kort.]`;
-      }
+      const note = document.createElement("div");
+      note.className = "bubble bubble--system-note";
+      note.textContent = roleChanged && promptChanged ? `⚙ Rolle: ${roleData.label} · Ny instruktion aktiveret`
+                       : roleChanged                  ? `⚙ Rolle: ${roleData.label} aktiveret`
+                       :                               `⚙ Ny instruktion aktiveret`;
+      chatLog.appendChild(note);
+      scrollToBottom();
+
+      // Natural trigger — system prompt already has the new role/prompt applied
+      const nm = profile.name || "dig";
+      const trigger = roleChanged
+        ? `hej ${nm}`
+        : `${nm}, jeg har fået nye instruktioner. lad mig vise dig.`;
 
       sendBtn.disabled   = true;
       userInput.disabled = true;
       appendTyping();
-      const response = await callMiaAI(trigger);
-      await displayResponse(response);
-      saveHistory();
-      sendBtn.disabled   = false;
-      userInput.disabled = false;
-      userInput.focus();
+      try {
+        const response = await callMiaAI(trigger);
+        await displayResponse(response);
+        saveHistory();
+      } catch (_) {
+        removeTyping();
+      } finally {
+        sendBtn.disabled   = false;
+        userInput.disabled = false;
+        userInput.focus();
+      }
     });
   }
 

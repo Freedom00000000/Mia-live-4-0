@@ -483,6 +483,19 @@ textarea.chat-input {
   animation: pop-in 0.15s ease-out;
 }
 
+/* ─── System note ─── */
+
+.bubble--system-note {
+  align-self: center;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+  color: rgba(155,0,245,0.7);
+  background: rgba(155,0,245,0.08);
+  border: 1px solid rgba(155,0,245,0.22);
+  border-radius: 20px; padding: 4px 14px;
+  animation: pop-in 0.18s ease-out;
+  max-width: fit-content;
+}
+
 /* ─── Reaction micro-bubble ─── */
 
 .bubble--reaction {

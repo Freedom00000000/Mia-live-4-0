@@ -794,6 +794,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         }
         GROQ_API_KEY = key;
         localStorage.setItem(GROQ_KEY_STORAGE, key);
+        updateKeyBar();
         modal.classList.remove("modal--visible");
         form.removeEventListener("submit", onSubmit);
         resolve(true);
@@ -822,7 +823,15 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       },
       body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
     });
-    if (!res.ok) throw new Error(`Groq ${res.status}`);
+    if (!res.ok) {
+      const status = res.status;
+      if (status === 401 || status === 403) {
+        GROQ_API_KEY = "";
+        localStorage.removeItem(GROQ_KEY_STORAGE);
+        updateKeyBar();
+      }
+      throw new Error(`Groq ${status}`);
+    }
     const data = await res.json();
     return data.choices[0].message.content.trim();
   }
@@ -911,7 +920,16 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       maybeUpdateSummary();
       return reply;
 
-    } catch (_) {
+    } catch (err) {
+      if (!GROQ_API_KEY) {
+        return `⚠ Ingen API-nøgle — klik 🔑 øverst og indsæt din Groq-nøgle (gratis på console.groq.com)`;
+      }
+      if (err.message?.includes("401") || err.message?.includes("403")) {
+        return `⚠ API-nøglen virker ikke — klik 🔑 øverst og indsæt en ny nøgle`;
+      }
+      if (err.message?.includes("429")) {
+        return `jeg er lidt overbelastet lige nu ||| prøv igen om et øjeblik`;
+      }
       return getLocalResponse(userMessage);
     }
   }
@@ -1470,9 +1488,16 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   // ─── Modal ─────────────────────────────────────────────────────────────────
 
+  function updateKeyBar() {
+    const bar = document.getElementById("noKeyBar");
+    if (bar) bar.style.display = GROQ_API_KEY ? "none" : "flex";
+  }
+
   function showModal(isNewUser) {
     modalTitle.textContent = isNewUser ? "Velkommen til MIA" : "Velkommen tilbage";
     nameRow.style.display  = isNewUser ? "flex" : "none";
+    const apiKeyRow = document.getElementById("modalApiKeyRow");
+    if (apiKeyRow) apiKeyRow.style.display = GROQ_API_KEY ? "none" : "flex";
     modal.classList.add("modal--visible");
     setTimeout(() => (isNewUser ? nameField : passField).focus(), 60);
   }
@@ -1496,6 +1521,11 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       profile.name = entered;
       saveProfile();
     }
+    const apiKeyVal = document.getElementById("modalApiKey")?.value.trim();
+    if (apiKeyVal && apiKeyVal.startsWith("gsk_")) {
+      GROQ_API_KEY = apiKeyVal;
+      localStorage.setItem(GROQ_KEY_STORAGE, apiKeyVal);
+    }
     hideModal();
     unlockMia();
   });
@@ -1503,9 +1533,9 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   // ─── Unlock ────────────────────────────────────────────────────────────────
 
   async function unlockMia() {
-    if (!GROQ_API_KEY) await promptForGroqKey();
     loadHistory();
     updateAffectionLabel();
+    updateKeyBar();
     const who      = profile.name || "dig";
     const returning = profile.messageCount > 0;
     const greetings = returning ? [

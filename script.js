@@ -794,7 +794,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   function isRepeatReply(reply) {
     if (!lastMiaReply) return false;
-    const norm = s => s.toLowerCase().replace(/[^\w\s]/g, "").slice(0, 60);
+    const norm = s => s.toLowerCase().replace(/[^\w\sæøåÆØÅ]/g, "").slice(0, 60);
     return norm(reply) === norm(lastMiaReply);
   }
 
@@ -851,6 +851,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         ];
         try {
           reply = cleanReply(await fetchGroq(breakMessages, 1.1, GROQ_MODELS.chat, maxTok));
+          if (hasAILeak(reply)) return getLocalResponse(userMessage);
         } catch (_) {}
       }
 

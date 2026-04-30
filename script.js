@@ -64,7 +64,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let apiMessages = JSON.parse(localStorage.getItem(API_CTX_KEY) || "[]");
 
   function saveProfile() { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); }
-  function saveApiCtx()  { localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages.slice(-24))); }
+  function saveApiCtx()  { localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages.slice(-40))); }
 
   // ─── History ───────────────────────────────────────────────────────────────
 
@@ -389,7 +389,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Log a text placeholder for context continuity
     const contextEntry = `[delte billede: ${filename}]`;
     apiMessages.push({ role: "user", content: contextEntry });
-    if (apiMessages.length > 24) apiMessages = apiMessages.slice(-24);
+    if (apiMessages.length > 40) apiMessages = apiMessages.slice(-40);
 
     try {
       let reply = cleanReply(
@@ -512,15 +512,15 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function getMaxTokens(a) {
-    if (!a) return 350;
-    return { micro: 60, short: 130, medium: 270, long: 420 }[a.length] ?? 350;
+    if (!a) return 400;
+    return { micro: 180, short: 280, medium: 400, long: 560 }[a.length] ?? 400;
   }
 
   function buildAdaptLine(a) {
     if (!a) return "";
     const parts = [];
-    if      (a.length === "micro")  parts.push(`SVAR-KALIBRERING: kun ${a.words} ord fra brugeren. Svar med MAX ét kort udtryk eller 1 sætning. Kortere end dem.`);
-    else if (a.length === "short")  parts.push(`SVAR-KALIBRERING: kort besked (${a.words} ord). Svar tilsvarende – max 2 sætninger.`);
+    if      (a.length === "micro")  parts.push(`SVAR-KALIBRERING: meget kort besked (${a.words} ord). Hold tonen let og nærværende – du behøver ikke spejle længden præcist, men undgå lange monologer.`);
+    else if (a.length === "short")  parts.push(`SVAR-KALIBRERING: kort besked (${a.words} ord). Vær kompakt men giv et rigtigt svar – ikke bare ét ord.`);
     else if (a.length === "medium") parts.push(`SVAR-KALIBRERING: medium (${a.words} ord). Match dybden men forbliv kompakt.`);
     else                            parts.push(`SVAR-KALIBRERING: lang besked (${a.words} ord). Gå gerne i dybden med mere substans.`);
     if (a.energy === "high") parts.push("Energi høj – match intensiteten.");
@@ -800,7 +800,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   async function callMiaAI(userMessage) {
     apiMessages.push({ role: "user", content: userMessage });
-    if (apiMessages.length > 24) apiMessages = apiMessages.slice(-24);
+    if (apiMessages.length > 40) apiMessages = apiMessages.slice(-40);
 
     const model    = pickModel(userMessage);
     const isSearch = model === GROQ_MODELS.search;
@@ -857,7 +857,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
       lastMiaReply = reply;
       apiMessages.push({ role: "assistant", content: reply });
-      if (apiMessages.length > 24) apiMessages = apiMessages.slice(-24);
+      if (apiMessages.length > 40) apiMessages = apiMessages.slice(-40);
       saveApiCtx();
       maybeUpdateSummary();
       return reply;

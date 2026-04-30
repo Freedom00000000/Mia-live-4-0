@@ -921,14 +921,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       return reply;
 
     } catch (err) {
-      if (!GROQ_API_KEY) {
-        return `⚠ Ingen API-nøgle — klik 🔑 øverst og indsæt din Groq-nøgle (gratis på console.groq.com)`;
-      }
       if (err.message?.includes("401") || err.message?.includes("403")) {
         return `⚠ API-nøglen virker ikke — klik 🔑 øverst og indsæt en ny nøgle`;
       }
       if (err.message?.includes("429")) {
         return `jeg er lidt overbelastet lige nu ||| prøv igen om et øjeblik`;
+      }
+      if (!GROQ_API_KEY) {
+        return `⚠ Ingen API-nøgle — klik 🔑 øverst og indsæt din Groq-nøgle (gratis på console.groq.com)`;
       }
       return getLocalResponse(userMessage);
     }

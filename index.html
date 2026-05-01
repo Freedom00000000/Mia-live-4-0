@@ -29,6 +29,10 @@
           <label for="modalPass">Adgangskode</label>
           <input id="modalPass" type="password" autocomplete="current-password" placeholder="••••••">
         </div>
+        <div id="modalApiKeyRow" class="modal-field">
+          <label for="modalApiKey">Groq API-nøgle <a href="https://console.groq.com" target="_blank" class="modal-link">Hent gratis →</a></label>
+          <input id="modalApiKey" type="password" autocomplete="off" placeholder="gsk_…">
+        </div>
         <p id="modalError" class="modal-error" aria-live="polite"></p>
         <button id="modalSubmit" type="submit" class="modal-btn">Åbn MIA</button>
       </form>
@@ -53,6 +57,10 @@
       </div>
       <span id="affectionLabel" class="affection-label affection--ny">Ny forbindelse</span>
     </header>
+
+    <div id="noKeyBar" class="no-key-bar" style="display:none">
+      ⚠ Ingen API-nøgle — MIA svarer ikke rigtigt. Klik <strong>🔑</strong> øverst for at tilføje din gratis Groq-nøgle.
+    </div>
 
     <main class="chat-window">
       <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Samtale med MIA"></div>

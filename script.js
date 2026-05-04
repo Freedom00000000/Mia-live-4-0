@@ -1,5 +1,6 @@
 // ── Groq config ────────────────────────────────────────────────────────────
-const GROQ_KEY_STORAGE = "mia_groq_key";
+const GROQ_KEY_STORAGE   = "mia_groq_key";
+const GEMINI_KEY_STORAGE = "mia_gemini_key";
 
 // Setup via URL: ?setup=gsk_... gemmer nøglen og fjerner den fra URL'en
 (function () {
@@ -13,7 +14,8 @@ const GROQ_KEY_STORAGE = "mia_groq_key";
   }
 })();
 
-let GROQ_API_KEY = localStorage.getItem(GROQ_KEY_STORAGE) || "";
+let GROQ_API_KEY   = localStorage.getItem(GROQ_KEY_STORAGE)   || "";
+let GEMINI_API_KEY = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
 
 document.addEventListener("DOMContentLoaded", function () {
   const clearBtn       = document.getElementById("clearBtn");
@@ -744,6 +746,12 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     /\bas an ai\b/i,
     /\bi (am|'m) not able to\b/i,
     /\bI'm sorry, (but )?I (can't|cannot|won't)\b/i,
+    /\boverload(ed)?\b/i,
+    /try again later/i,
+    /I('m| am) (currently |a little bit? )?overload/i,
+    /please try again/i,
+    /too many requests/i,
+    /service (is )?unavailable/i,
   ];
 
   function hasAILeak(text) {
@@ -777,23 +785,55 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   function promptForGroqKey() {
     return new Promise(resolve => {
-      const modal = document.getElementById("apiKeyModal");
-      const form  = document.getElementById("apiKeyForm");
-      const input = document.getElementById("apiKeyInput");
-      const err   = document.getElementById("apiKeyError");
+      const modal       = document.getElementById("apiKeyModal");
+      const form        = document.getElementById("apiKeyForm");
+      const groqInput   = document.getElementById("apiKeyInput");
+      const geminiInput = document.getElementById("geminiKeyInput");
+      const err         = document.getElementById("apiKeyError");
       if (!modal) { resolve(false); return; }
+
+      // Pre-fill existing keys
+      if (groqInput)   groqInput.value   = GROQ_API_KEY;
+      if (geminiInput) geminiInput.value = GEMINI_API_KEY;
       err.textContent = "";
       modal.classList.add("modal--visible");
-      setTimeout(() => input.focus(), 60);
+      setTimeout(() => groqInput?.focus(), 60);
+
       function onSubmit(e) {
         e.preventDefault();
-        const key = input.value.trim();
-        if (!key.startsWith("gsk_")) {
-          err.textContent = "Nøglen skal starte med gsk_";
+        const groqKey   = groqInput?.value.trim()   || "";
+        const geminiKey = geminiInput?.value.trim() || "";
+
+        if (!groqKey && !geminiKey) {
+          err.textContent = "Udfyld mindst én nøgle";
           return;
         }
-        GROQ_API_KEY = key;
-        localStorage.setItem(GROQ_KEY_STORAGE, key);
+        if (groqKey && !groqKey.startsWith("gsk_")) {
+          err.textContent = "Groq-nøglen skal starte med gsk_";
+          groqInput.focus();
+          return;
+        }
+        if (geminiKey && !geminiKey.startsWith("AIza")) {
+          err.textContent = "Gemini-nøglen skal starte med AIza";
+          geminiInput?.focus();
+          return;
+        }
+
+        if (groqKey) {
+          GROQ_API_KEY = groqKey;
+          localStorage.setItem(GROQ_KEY_STORAGE, groqKey);
+        } else {
+          GROQ_API_KEY = "";
+          localStorage.removeItem(GROQ_KEY_STORAGE);
+        }
+        if (geminiKey) {
+          GEMINI_API_KEY = geminiKey;
+          localStorage.setItem(GEMINI_KEY_STORAGE, geminiKey);
+        } else {
+          GEMINI_API_KEY = "";
+          localStorage.removeItem(GEMINI_KEY_STORAGE);
+        }
+
         updateKeyBar();
         modal.classList.remove("modal--visible");
         form.removeEventListener("submit", onSubmit);
@@ -810,30 +850,70 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     });
   }
 
-  async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
-    if (!GROQ_API_KEY) {
-      const ok = await promptForGroqKey();
-      if (!ok) throw new Error("Ingen API-nøgle");
-    }
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  // ─── Primær AI: lokal server (/api/chat) → Base44 → Groq → Pollinations ───
+  // API-nøgler håndteres server-side i .env — ingen nøgle nødvendig i browseren
+
+  async function fetchServer(messages, systemPromptStr, maxTokens = 350) {
+    const res = await fetch("/api/chat", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${GROQ_API_KEY}`
-      },
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: messages.filter(m => m.role !== "system"),
+        systemPrompt: systemPromptStr,
+        profile: { affection: profile.affection }
+      })
     });
-    if (!res.ok) {
-      const status = res.status;
-      if (status === 401 || status === 403) {
-        GROQ_API_KEY = "";
-        localStorage.removeItem(GROQ_KEY_STORAGE);
-        updateKeyBar();
-      }
-      throw new Error(`Groq ${status}`);
-    }
+    if (!res.ok) throw new Error(`Server ${res.status}`);
     const data = await res.json();
-    return data.choices[0].message.content.trim();
+    return (data.text || "").trim();
+  }
+
+  // Fallback: Pollinations direkte (hvis serveren ikke kører)
+  async function fetchPollinations(messages, temperature = 0.95, maxTokens = 350) {
+    const res = await fetch("https://api.pollinations.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "openai-large", messages, max_tokens: maxTokens, temperature, private: true })
+    });
+    if (!res.ok) throw new Error(`Pollinations ${res.status}`);
+    const data = await res.json();
+    return data.candidates[0].content.parts[0].text.trim();
+  }
+
+  // Fallback: Groq direkte (hvis nøgle er sat i browseren)
+  async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350, retries = 2) {
+    if (!GROQ_API_KEY) throw new Error("Ingen Groq-nøgle");
+    const doFetch = async () => {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
+        body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) { GROQ_API_KEY = ""; localStorage.removeItem(GROQ_KEY_STORAGE); updateKeyBar(); }
+        throw new Error(`Groq ${res.status}`);
+      }
+      const data = await res.json();
+      return data.choices[0].message.content.trim();
+    };
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try { return await doFetch(); }
+      catch (err) {
+        if (err.message?.includes("429") && attempt < retries) { await new Promise(r => setTimeout(r, (attempt + 1) * 2000)); continue; }
+        throw err;
+      }
+    }
+  }
+
+  // Kalder AI i prioriteret rækkefølge: server (Base44) → Groq → Pollinations
+  async function fetchAI(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
+    const sysMsg = messages.find(m => m.role === "system");
+    const sysStr = sysMsg?.content || "";
+    try { return await fetchServer(messages, sysStr, maxTokens); } catch (_) {}
+    if (GROQ_API_KEY) {
+      try { return await fetchGroq(messages, temperature, model, maxTokens); } catch (_) {}
+    }
+    throw new Error("Ingen AI-nøgle konfigureret");
   }
 
   // Every 15 messages, compress recent context into a summary MIA can reference
@@ -841,7 +921,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     if (profile.messageCount % 15 !== 0 || profile.messageCount === 0) return;
     const recent = apiMessages.slice(-60).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
     try {
-      const summary = await fetchGroq([
+      const summary = await fetchAI([
         { role: "system", content: "Opsummer denne samtale i 3-5 korte sætninger på dansk: hvad talte de om, hvad lærte Mia om personen, hvad var stemningen. Vær konkret og faktuel." },
         { role: "user",   content: recent }
       ], 0.3, GROQ_MODELS.fast);
@@ -872,13 +952,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     const sysMsg = { role: "system", content: buildSystemPrompt(isSearch, isCode, analysis) };
 
     try {
-      let reply;
-      try {
-        reply = await fetchGroq([sysMsg, ...apiMessages], 0.95, model, maxTok);
-      } catch (_) {
-        await new Promise(r => setTimeout(r, 1400));
-        reply = await fetchGroq([sysMsg, ...apiMessages], 0.95, model, maxTok);
-      }
+      let reply = await fetchAI([sysMsg, ...apiMessages], 0.95, model, maxTok);
 
       if (isSearch) setVoiceStatus("");
 
@@ -893,7 +967,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
           { role: "user", content: "du brød karakter – svar igen som Mia, et rigtigt menneske, ingen AI-fraser." }
         ];
         try {
-          reply = cleanReply(await fetchGroq(repairMessages, 1.0, GROQ_MODELS.chat, maxTok));
+          reply = cleanReply(await fetchAI(repairMessages, 1.0, GROQ_MODELS.chat, maxTok));
         } catch (_) {
           return getLocalResponse(userMessage);
         }
@@ -909,7 +983,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
           { role: "user", content: "du gentog dig selv. svar anderledes – noget nyt, specifikt, ikke det du sagde sidst." }
         ];
         try {
-          reply = cleanReply(await fetchGroq(breakMessages, 1.1, GROQ_MODELS.chat, maxTok));
+          reply = cleanReply(await fetchAI(breakMessages, 1.1, GROQ_MODELS.chat, maxTok));
           if (hasAILeak(reply)) return getLocalResponse(userMessage);
         } catch (_) {}
       }
@@ -922,13 +996,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
     } catch (err) {
       if (err.message?.includes("401") || err.message?.includes("403")) {
-        return `⚠ API-nøglen virker ikke — klik 🔑 øverst og indsæt en ny nøgle`;
-      }
-      if (err.message?.includes("429")) {
-        return `jeg er lidt overbelastet lige nu ||| prøv igen om et øjeblik`;
-      }
-      if (!GROQ_API_KEY) {
-        return `⚠ Ingen API-nøgle — klik 🔑 øverst og indsæt din Groq-nøgle (gratis på console.groq.com)`;
+        return `⚠ Groq-nøglen virker ikke — klik 🔑 øverst og indsæt en ny nøgle`;
       }
       return getLocalResponse(userMessage);
     }
@@ -1490,14 +1558,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   function updateKeyBar() {
     const bar = document.getElementById("noKeyBar");
-    if (bar) bar.style.display = GROQ_API_KEY ? "none" : "flex";
+    if (bar) bar.style.display = (GROQ_API_KEY || GEMINI_API_KEY) ? "none" : "";
   }
 
   function showModal(isNewUser) {
     modalTitle.textContent = isNewUser ? "Velkommen til MIA" : "Velkommen tilbage";
     nameRow.style.display  = isNewUser ? "flex" : "none";
     const apiKeyRow = document.getElementById("modalApiKeyRow");
-    if (apiKeyRow) apiKeyRow.style.display = GROQ_API_KEY ? "none" : "flex";
+    if (apiKeyRow) apiKeyRow.style.display = "none"; // API håndteres automatisk
     modal.classList.add("modal--visible");
     setTimeout(() => (isNewUser ? nameField : passField).focus(), 60);
   }

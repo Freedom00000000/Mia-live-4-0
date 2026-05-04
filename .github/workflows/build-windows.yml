@@ -1,0 +1,44 @@
+name: Build Windows App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "electron/**"
+      - "server.js"
+      - "index.html"
+      - "script.js"
+      - "styles.css"
+      - "assets/**"
+      - "package.json"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        run: npm run electron:build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: MIA-Windows-${{ github.run_number }}
+          path: |
+            dist/*.exe
+            dist/*.yml
+          retention-days: 60
+          if-no-files-found: error

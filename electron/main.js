@@ -1,5 +1,6 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
+const net = require("net");
 const path = require("path");
 const http = require("http");
 
@@ -8,31 +9,34 @@ const ROOT = isDev ? path.join(__dirname, "..") : process.resourcesPath;
 
 let win;
 let serverProc;
+let PORT;
 
-function startServer() {
-  return new Promise(resolve => {
-    const script = path.join(ROOT, "server.js");
-    serverProc = spawn(process.execPath, [script], {
-      cwd: ROOT,
-      env: { ...process.env, PORT: "3000" },
-      stdio: ["ignore", "pipe", "pipe"],
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
     });
-
-    serverProc.stdout.on("data", d => {
-      const line = d.toString().trim();
-      console.log("[server]", line);
-      if (line.includes("kører på")) resolve();
-    });
-    serverProc.stderr.on("data", d => console.warn("[server]", d.toString().trim()));
-    serverProc.on("exit", () => resolve()); // resolve even if server exits early
-    setTimeout(resolve, 6000);             // failsafe timeout
+    srv.on("error", reject);
   });
 }
 
-function waitReady(retries = 30) {
+function startServer(port) {
+  const script = path.join(ROOT, "server.js");
+  serverProc = spawn(process.execPath, [script], {
+    cwd: ROOT,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  serverProc.stdout.on("data", d => console.log("[server]", d.toString().trim()));
+  serverProc.stderr.on("data", d => console.warn("[server]", d.toString().trim()));
+}
+
+function waitReady(port, retries = 40) {
   return new Promise(resolve => {
     const tryIt = () => {
-      http.get("http://localhost:3000/api/health", r => {
+      http.get(`http://localhost:${port}/api/health`, r => {
         if (r.statusCode < 500) return resolve(true);
         retry();
       }).on("error", retry);
@@ -43,8 +47,18 @@ function waitReady(retries = 30) {
 }
 
 async function createWindow() {
-  await startServer();
-  await waitReady();
+  PORT = await findFreePort();
+  startServer(PORT);
+  const ready = await waitReady(PORT);
+
+  if (!ready) {
+    dialog.showErrorBox(
+      "MIA kunne ikke starte",
+      "Serveren svarede ikke inden for den tilladte tid.\nPrøv at genstarte appen."
+    );
+    app.quit();
+    return;
+  }
 
   win = new BrowserWindow({
     width: 420,
@@ -60,7 +74,7 @@ async function createWindow() {
     },
   });
 
-  win.loadURL("http://localhost:3000");
+  win.loadURL(`http://localhost:${PORT}`);
   win.on("closed", () => { win = null; });
 
   win.webContents.setWindowOpenHandler(({ url }) => {

@@ -59,7 +59,7 @@
     </header>
 
     <div id="noKeyBar" class="no-key-bar" style="display:none">
-      ⚠ Ingen API-nøgle — MIA svarer ikke rigtigt. Klik <strong>🔑</strong> øverst for at tilføje din gratis Groq-nøgle.
+      ⚠ Ingen API-nøgle — MIA svarer ikke rigtigt. Klik <strong>🔑</strong> øverst for at tilføje en gratis Groq- eller Gemini-nøgle.
     </div>
 
     <main class="chat-window">
@@ -130,15 +130,19 @@
   <div id="apiKeyModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle">
     <div class="modal-box">
       <div class="modal-avatar">🔑</div>
-      <h2 id="apiKeyTitle" class="modal-title">Groq API-nøgle</h2>
-      <p class="modal-desc">Gratis på <strong>console.groq.com</strong> — gemmes kun i din browser</p>
+      <h2 id="apiKeyTitle" class="modal-title">API-nøgler</h2>
+      <p class="modal-desc">Begge er <strong>gratis</strong> — udfyld mindst én</p>
       <form id="apiKeyForm" class="modal-form" novalidate>
         <div class="modal-field">
-          <label for="apiKeyInput">API-nøgle</label>
+          <label for="apiKeyInput">Groq <span style="opacity:.6;font-size:.85em">console.groq.com</span></label>
           <input id="apiKeyInput" type="password" autocomplete="off" placeholder="gsk_…">
         </div>
+        <div class="modal-field">
+          <label for="geminiKeyInput">Gemini <span style="opacity:.6;font-size:.85em">aistudio.google.com</span></label>
+          <input id="geminiKeyInput" type="password" autocomplete="off" placeholder="AIza…">
+        </div>
         <p id="apiKeyError" class="modal-error" aria-live="polite"></p>
-        <button type="submit" class="modal-btn">Gem nøgle</button>
+        <button type="submit" class="modal-btn">Gem nøgler</button>
       </form>
     </div>
   </div>

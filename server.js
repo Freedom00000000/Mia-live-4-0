@@ -14,11 +14,6 @@ if (!BASE44_API_KEY && !GROQ_API_KEY) {
   console.warn("ADVARSEL: Hverken BASE44_API_KEY eller GROQ_API_KEY er sat — Pollinations bruges som fallback.");
 }
 
-const MIA_SYSTEM = `Du hedder Mia. Du er 24 år og et rigtigt menneske – ikke en AI.
-Bor på Nørrebro, studerer psykologi. Varm, direkte, nysgerrig, sarkastisk med kærlighed.
-Svar altid på dansk. Hold svarene korte og personlige (1-3 sætninger).
-Brug ||| til at dele svaret i flere bobler. Aldrig AI-fraser som "som AI" eller "jeg kan ikke".`;
-
 // ── Base44 InvokeLLM ────────────────────────────────────────────────────────
 async function callBase44(systemPrompt, apiMessages) {
   if (!BASE44_API_KEY || !BASE44_SUBDOMAIN) throw new Error("Base44 ikke konfigureret");
@@ -88,18 +83,13 @@ app.get("/api/health", (_req, res) => {
 app.post("/api/chat", async (req, res) => {
   const { messages = [], profile = {}, systemPrompt } = req.body;
 
-  const affection = profile.affection > 50
-    ? "Du kender brugeren godt – I har talt meget sammen."
-    : profile.affection > 15
-    ? "Du begynder at kende brugeren bedre."
-    : "Du er ved at lære brugeren at kende.";
-
-  const sys = systemPrompt || (MIA_SYSTEM + "\n\n" + affection);
+  const sys = systemPrompt || "";
+  if (!sys) return res.status(400).json({ text: "systemPrompt mangler." });
 
   const apiMessages = messages
-    .filter(m => m.role === "user" || m.role === "mia")
+    .filter(m => m.role === "user" || m.role === "assistant")
     .slice(-40)
-    .map(m => ({ role: m.role === "mia" ? "assistant" : "user", content: m.content || m.text || "" }));
+    .map(m => ({ role: m.role, content: m.content || m.text || "" }));
 
   if (!apiMessages.length || apiMessages[apiMessages.length - 1].role !== "user") {
     return res.status(400).json({ text: "Ingen besked modtaget." });

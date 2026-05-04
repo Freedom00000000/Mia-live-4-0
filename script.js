@@ -1,5 +1,6 @@
 // ── Groq config ────────────────────────────────────────────────────────────
-const GROQ_KEY_STORAGE = "mia_groq_key";
+const GROQ_KEY_STORAGE   = "mia_groq_key";
+const GEMINI_KEY_STORAGE = "mia_gemini_key";
 
 // Setup via URL: ?setup=gsk_... gemmer nøglen og fjerner den fra URL'en
 (function () {
@@ -13,7 +14,8 @@ const GROQ_KEY_STORAGE = "mia_groq_key";
   }
 })();
 
-let GROQ_API_KEY = localStorage.getItem(GROQ_KEY_STORAGE) || "";
+let GROQ_API_KEY   = localStorage.getItem(GROQ_KEY_STORAGE)   || "";
+let GEMINI_API_KEY = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
 
 document.addEventListener("DOMContentLoaded", function () {
   const clearBtn       = document.getElementById("clearBtn");
@@ -744,6 +746,12 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     /\bas an ai\b/i,
     /\bi (am|'m) not able to\b/i,
     /\bI'm sorry, (but )?I (can't|cannot|won't)\b/i,
+    /\boverload(ed)?\b/i,
+    /try again later/i,
+    /I('m| am) (currently |a little bit? )?overload/i,
+    /please try again/i,
+    /too many requests/i,
+    /service (is )?unavailable/i,
   ];
 
   function hasAILeak(text) {
@@ -777,23 +785,55 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   function promptForGroqKey() {
     return new Promise(resolve => {
-      const modal = document.getElementById("apiKeyModal");
-      const form  = document.getElementById("apiKeyForm");
-      const input = document.getElementById("apiKeyInput");
-      const err   = document.getElementById("apiKeyError");
+      const modal       = document.getElementById("apiKeyModal");
+      const form        = document.getElementById("apiKeyForm");
+      const groqInput   = document.getElementById("apiKeyInput");
+      const geminiInput = document.getElementById("geminiKeyInput");
+      const err         = document.getElementById("apiKeyError");
       if (!modal) { resolve(false); return; }
+
+      // Pre-fill existing keys
+      if (groqInput)   groqInput.value   = GROQ_API_KEY;
+      if (geminiInput) geminiInput.value = GEMINI_API_KEY;
       err.textContent = "";
       modal.classList.add("modal--visible");
-      setTimeout(() => input.focus(), 60);
+      setTimeout(() => groqInput?.focus(), 60);
+
       function onSubmit(e) {
         e.preventDefault();
-        const key = input.value.trim();
-        if (!key.startsWith("gsk_")) {
-          err.textContent = "Nøglen skal starte med gsk_";
+        const groqKey   = groqInput?.value.trim()   || "";
+        const geminiKey = geminiInput?.value.trim() || "";
+
+        if (!groqKey && !geminiKey) {
+          err.textContent = "Udfyld mindst én nøgle";
           return;
         }
-        GROQ_API_KEY = key;
-        localStorage.setItem(GROQ_KEY_STORAGE, key);
+        if (groqKey && !groqKey.startsWith("gsk_")) {
+          err.textContent = "Groq-nøglen skal starte med gsk_";
+          groqInput.focus();
+          return;
+        }
+        if (geminiKey && !geminiKey.startsWith("AIza")) {
+          err.textContent = "Gemini-nøglen skal starte med AIza";
+          geminiInput?.focus();
+          return;
+        }
+
+        if (groqKey) {
+          GROQ_API_KEY = groqKey;
+          localStorage.setItem(GROQ_KEY_STORAGE, groqKey);
+        } else {
+          GROQ_API_KEY = "";
+          localStorage.removeItem(GROQ_KEY_STORAGE);
+        }
+        if (geminiKey) {
+          GEMINI_API_KEY = geminiKey;
+          localStorage.setItem(GEMINI_KEY_STORAGE, geminiKey);
+        } else {
+          GEMINI_API_KEY = "";
+          localStorage.removeItem(GEMINI_KEY_STORAGE);
+        }
+
         updateKeyBar();
         modal.classList.remove("modal--visible");
         form.removeEventListener("submit", onSubmit);
@@ -837,7 +877,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     });
     if (!res.ok) throw new Error(`Pollinations ${res.status}`);
     const data = await res.json();
-    return data.choices[0].message.content.trim();
+    return data.candidates[0].content.parts[0].text.trim();
   }
 
   // Fallback: Groq direkte (hvis nøgle er sat i browseren)
@@ -873,7 +913,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     if (GROQ_API_KEY) {
       try { return await fetchGroq(messages, temperature, model, maxTokens); } catch (_) {}
     }
-    return await fetchPollinations(messages, temperature, maxTokens);
+    throw new Error("Ingen AI-nøgle konfigureret");
   }
 
   // Every 15 messages, compress recent context into a summary MIA can reference
@@ -1518,7 +1558,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   function updateKeyBar() {
     const bar = document.getElementById("noKeyBar");
-    if (bar) bar.style.display = "none"; // Pollinations bruges automatisk — ingen nøgle krævet
+    if (bar) bar.style.display = (GROQ_API_KEY || GEMINI_API_KEY) ? "none" : "";
   }
 
   function showModal(isNewUser) {

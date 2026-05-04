@@ -815,25 +815,39 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       const ok = await promptForGroqKey();
       if (!ok) throw new Error("Ingen API-nøgle");
     }
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${GROQ_API_KEY}`
-      },
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
-    });
-    if (!res.ok) {
-      const status = res.status;
-      if (status === 401 || status === 403) {
-        GROQ_API_KEY = "";
-        localStorage.removeItem(GROQ_KEY_STORAGE);
-        updateKeyBar();
+    const doFetch = async () => {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${GROQ_API_KEY}`
+        },
+        body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
+      });
+      if (!res.ok) {
+        const status = res.status;
+        if (status === 401 || status === 403) {
+          GROQ_API_KEY = "";
+          localStorage.removeItem(GROQ_KEY_STORAGE);
+          updateKeyBar();
+        }
+        throw new Error(`Groq ${status}`);
       }
-      throw new Error(`Groq ${status}`);
+      const data = await res.json();
+      return data.choices[0].message.content.trim();
+    };
+    // Retry on 429 with exponential backoff: 2s, 4s
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await doFetch();
+      } catch (err) {
+        if (err.message?.includes("429") && attempt < 2) {
+          await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
+          continue;
+        }
+        throw err;
+      }
     }
-    const data = await res.json();
-    return data.choices[0].message.content.trim();
   }
 
   // Every 15 messages, compress recent context into a summary MIA can reference
@@ -925,7 +939,19 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         return `⚠ API-nøglen virker ikke — klik 🔑 øverst og indsæt en ny nøgle`;
       }
       if (err.message?.includes("429")) {
-        return `jeg er lidt overbelastet lige nu ||| prøv igen om et øjeblik`;
+        // Fallback to fast lightweight model before giving up
+        try {
+          const fallback = cleanReply(
+            await fetchGroq([sysMsg, ...apiMessages], 0.95, GROQ_MODELS.fast, Math.min(maxTok, 500))
+          );
+          if (fallback && !hasAILeak(fallback)) {
+            lastMiaReply = fallback;
+            apiMessages.push({ role: "assistant", content: fallback });
+            saveApiCtx();
+            return fallback;
+          }
+        } catch (_) {}
+        return getLocalResponse(userMessage);
       }
       if (!GROQ_API_KEY) {
         return `⚠ Ingen API-nøgle — klik 🔑 øverst og indsæt din Groq-nøgle (gratis på console.groq.com)`;

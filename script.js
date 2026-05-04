@@ -810,7 +810,25 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     });
   }
 
-  // ─── Pollinations AI (free, no key required) ──────────────────────────────
+  // ─── Primær AI: lokal server (/api/chat) → Base44 → Groq → Pollinations ───
+  // API-nøgler håndteres server-side i .env — ingen nøgle nødvendig i browseren
+
+  async function fetchServer(messages, systemPromptStr, maxTokens = 350) {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: messages.filter(m => m.role !== "system"),
+        systemPrompt: systemPromptStr,
+        profile: { affection: profile.affection }
+      })
+    });
+    if (!res.ok) throw new Error(`Server ${res.status}`);
+    const data = await res.json();
+    return (data.text || "").trim();
+  }
+
+  // Fallback: Pollinations direkte (hvis serveren ikke kører)
   async function fetchPollinations(messages, temperature = 0.95, maxTokens = 350) {
     const res = await fetch("https://api.pollinations.ai/v1/chat/completions", {
       method: "POST",
@@ -822,7 +840,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     return data.choices[0].message.content.trim();
   }
 
-  // retries=2 normalt, retries=0 for éngangskald (undgår kaskade-ventetid)
+  // Fallback: Groq direkte (hvis nøgle er sat i browseren)
   async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350, retries = 2) {
     if (!GROQ_API_KEY) throw new Error("Ingen Groq-nøgle");
     const doFetch = async () => {
@@ -832,41 +850,28 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
       });
       if (!res.ok) {
-        const status = res.status;
-        if (status === 401 || status === 403) {
-          GROQ_API_KEY = "";
-          localStorage.removeItem(GROQ_KEY_STORAGE);
-          updateKeyBar();
-        }
-        throw new Error(`Groq ${status}`);
+        if (res.status === 401 || res.status === 403) { GROQ_API_KEY = ""; localStorage.removeItem(GROQ_KEY_STORAGE); updateKeyBar(); }
+        throw new Error(`Groq ${res.status}`);
       }
       const data = await res.json();
       return data.choices[0].message.content.trim();
     };
     for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        return await doFetch();
-      } catch (err) {
-        if (err.message?.includes("429") && attempt < retries) {
-          await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
-          continue;
-        }
+      try { return await doFetch(); }
+      catch (err) {
+        if (err.message?.includes("429") && attempt < retries) { await new Promise(r => setTimeout(r, (attempt + 1) * 2000)); continue; }
         throw err;
       }
     }
   }
 
-  // Kalder den bedste tilgængelige AI — Groq hvis nøgle, ellers Pollinations
+  // Kalder AI i prioriteret rækkefølge: server (Base44) → Groq → Pollinations
   async function fetchAI(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
+    const sysMsg = messages.find(m => m.role === "system");
+    const sysStr = sysMsg?.content || "";
+    try { return await fetchServer(messages, sysStr, maxTokens); } catch (_) {}
     if (GROQ_API_KEY) {
-      try {
-        return await fetchGroq(messages, temperature, model, maxTokens);
-      } catch (err) {
-        if (err.message?.includes("429") || err.message?.includes("401") || err.message?.includes("403")) {
-          return await fetchPollinations(messages, temperature, Math.min(maxTokens, 500));
-        }
-        throw err;
-      }
+      try { return await fetchGroq(messages, temperature, model, maxTokens); } catch (_) {}
     }
     return await fetchPollinations(messages, temperature, maxTokens);
   }

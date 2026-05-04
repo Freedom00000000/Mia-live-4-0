@@ -850,33 +850,37 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     });
   }
 
-  // ─── Google Gemini Flash (gratis, ~1M tokens/dag) ─────────────────────────
-  async function fetchGemini(messages, temperature = 0.95, maxTokens = 350) {
-    if (!GEMINI_API_KEY) throw new Error("Ingen Gemini-nøgle");
-    const sysMsg  = messages.find(m => m.role === "system");
-    const chatMsgs = messages.filter(m => m.role !== "system");
-    const contents = chatMsgs.map(m => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }]
-    }));
-    const body = {
-      contents,
-      generationConfig: { maxOutputTokens: maxTokens, temperature },
-    };
-    if (sysMsg) body.system_instruction = { parts: [{ text: sysMsg.content }] };
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-    );
-    if (!res.ok) {
-      if (res.status === 400 || res.status === 403) { GEMINI_API_KEY = ""; localStorage.removeItem(GEMINI_KEY_STORAGE); updateKeyBar(); }
-      throw new Error(`Gemini ${res.status}`);
-    }
+  // ─── Primær AI: lokal server (/api/chat) → Base44 → Groq → Pollinations ───
+  // API-nøgler håndteres server-side i .env — ingen nøgle nødvendig i browseren
+
+  async function fetchServer(messages, systemPromptStr, maxTokens = 350) {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: messages.filter(m => m.role !== "system"),
+        systemPrompt: systemPromptStr,
+        profile: { affection: profile.affection }
+      })
+    });
+    if (!res.ok) throw new Error(`Server ${res.status}`);
+    const data = await res.json();
+    return (data.text || "").trim();
+  }
+
+  // Fallback: Pollinations direkte (hvis serveren ikke kører)
+  async function fetchPollinations(messages, temperature = 0.95, maxTokens = 350) {
+    const res = await fetch("https://api.pollinations.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "openai-large", messages, max_tokens: maxTokens, temperature, private: true })
+    });
+    if (!res.ok) throw new Error(`Pollinations ${res.status}`);
     const data = await res.json();
     return data.candidates[0].content.parts[0].text.trim();
   }
 
-  // retries=2 normalt, retries=0 for éngangskald (undgår kaskade-ventetid)
+  // Fallback: Groq direkte (hvis nøgle er sat i browseren)
   async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350, retries = 2) {
     if (!GROQ_API_KEY) throw new Error("Ingen Groq-nøgle");
     const doFetch = async () => {
@@ -886,37 +890,28 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
       });
       if (!res.ok) {
-        const status = res.status;
-        if (status === 401 || status === 403) {
-          GROQ_API_KEY = "";
-          localStorage.removeItem(GROQ_KEY_STORAGE);
-          updateKeyBar();
-        }
-        throw new Error(`Groq ${status}`);
+        if (res.status === 401 || res.status === 403) { GROQ_API_KEY = ""; localStorage.removeItem(GROQ_KEY_STORAGE); updateKeyBar(); }
+        throw new Error(`Groq ${res.status}`);
       }
       const data = await res.json();
       return data.choices[0].message.content.trim();
     };
     for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        return await doFetch();
-      } catch (err) {
-        if (err.message?.includes("429") && attempt < retries) {
-          await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
-          continue;
-        }
+      try { return await doFetch(); }
+      catch (err) {
+        if (err.message?.includes("429") && attempt < retries) { await new Promise(r => setTimeout(r, (attempt + 1) * 2000)); continue; }
         throw err;
       }
     }
   }
 
-  // Kalder AI i prioriteret rækkefølge: Groq → Gemini → lokalt svar
+  // Kalder AI i prioriteret rækkefølge: server (Base44) → Groq → Pollinations
   async function fetchAI(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
+    const sysMsg = messages.find(m => m.role === "system");
+    const sysStr = sysMsg?.content || "";
+    try { return await fetchServer(messages, sysStr, maxTokens); } catch (_) {}
     if (GROQ_API_KEY) {
       try { return await fetchGroq(messages, temperature, model, maxTokens); } catch (_) {}
-    }
-    if (GEMINI_API_KEY) {
-      try { return await fetchGemini(messages, temperature, maxTokens); } catch (_) {}
     }
     throw new Error("Ingen AI-nøgle konfigureret");
   }

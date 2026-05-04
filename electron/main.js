@@ -2,7 +2,9 @@ const { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } = require("
 const net  = require("net");
 const path = require("path");
 
-const ROOT = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..");
+// app.getAppPath() resolves correctly in both dev and packaged builds
+// (resources/app/ when asar:false, resources/app.asar when asar:true)
+const ROOT = app.getAppPath();
 
 let win, tray, PORT;
 

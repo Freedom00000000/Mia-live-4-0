@@ -1,16 +1,12 @@
-const { app, BrowserWindow, shell, dialog } = require("electron");
-const { spawn } = require("child_process");
-const net = require("net");
+const { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } = require("electron");
+const net  = require("net");
 const path = require("path");
-const http = require("http");
 
-const isDev = !app.isPackaged;
-const ROOT = isDev ? path.join(__dirname, "..") : process.resourcesPath;
+const ROOT = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..");
 
-let win;
-let serverProc;
-let PORT;
+let win, tray, PORT;
 
+// ── Find a free port ────────────────────────────────────────────────────────
 function findFreePort() {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
@@ -22,44 +18,48 @@ function findFreePort() {
   });
 }
 
+// ── Start Express server in-process ────────────────────────────────────────
 function startServer(port) {
-  const script = path.join(ROOT, "server.js");
-  serverProc = spawn(process.execPath, [script], {
-    cwd: ROOT,
-    env: { ...process.env, PORT: String(port) },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  serverProc.stdout.on("data", d => console.log("[server]", d.toString().trim()));
-  serverProc.stderr.on("data", d => console.warn("[server]", d.toString().trim()));
+  const { start } = require(path.join(ROOT, "server.js"));
+  return start(port);
 }
 
-function waitReady(port, retries = 40) {
-  return new Promise(resolve => {
-    const tryIt = () => {
-      http.get(`http://localhost:${port}/api/health`, r => {
-        if (r.statusCode < 500) return resolve(true);
-        retry();
-      }).on("error", retry);
-    };
-    const retry = () => retries-- > 0 ? setTimeout(tryIt, 300) : resolve(false);
-    tryIt();
-  });
+// ── Build tray icon from embedded data (no external file needed) ────────────
+function makeTrayIcon() {
+  // 16×16 magenta-on-dark "M" icon encoded as PNG data URL
+  const dataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/" +
+    "9hAAAAAXNSR0IArs4c6QAAAARnQU5ErkJggg==";
+  try {
+    const img = nativeImage.createFromPath(path.join(ROOT, "assets", "icon.png"));
+    if (!img.isEmpty()) return img;
+  } catch (_) {}
+  return nativeImage.createFromDataURL(dataUrl);
 }
 
-async function createWindow() {
-  PORT = await findFreePort();
-  startServer(PORT);
-  const ready = await waitReady(PORT);
+// ── System tray ─────────────────────────────────────────────────────────────
+function createTray() {
+  tray = new Tray(makeTrayIcon());
+  tray.setToolTip("MIA");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Åbn MIA",   click: showWindow },
+    { type: "separator" },
+    { label: "Afslut",    click: quitApp },
+  ]));
+  tray.on("click", showWindow);
+}
 
-  if (!ready) {
-    dialog.showErrorBox(
-      "MIA kunne ikke starte",
-      "Serveren svarede ikke inden for den tilladte tid.\nPrøv at genstarte appen."
-    );
-    app.quit();
-    return;
-  }
+function showWindow() {
+  if (!win) return createChatWindow();
+  win.isVisible() ? win.focus() : win.show();
+}
 
+function quitApp() {
+  app.isQuitting = true;
+  app.quit();
+}
+
+// ── Chat window ─────────────────────────────────────────────────────────────
+function createChatWindow() {
   win = new BrowserWindow({
     width: 420,
     height: 820,
@@ -68,6 +68,7 @@ async function createWindow() {
     title: "MIA",
     autoHideMenuBar: true,
     backgroundColor: "#0d0d0d",
+    icon: path.join(ROOT, "assets", "icon.png"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -75,6 +76,20 @@ async function createWindow() {
   });
 
   win.loadURL(`http://localhost:${PORT}`);
+
+  // Minimise to tray instead of closing
+  win.on("close", e => {
+    if (!app.isQuitting) {
+      e.preventDefault();
+      win.hide();
+      tray.displayBalloon({
+        iconType: "none",
+        title: "MIA kører stadig",
+        content: "Klik på ikonet i systembakken for at åbne MIA igen.",
+      });
+    }
+  });
+
   win.on("closed", () => { win = null; });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -83,10 +98,24 @@ async function createWindow() {
   });
 }
 
-function killServer() {
-  if (serverProc) { serverProc.kill(); serverProc = null; }
-}
+// ── Boot ─────────────────────────────────────────────────────────────────────
+app.isQuitting = false;
 
-app.whenReady().then(createWindow);
-app.on("window-all-closed", () => { killServer(); if (process.platform !== "darwin") app.quit(); });
-app.on("before-quit", killServer);
+app.whenReady().then(async () => {
+  try {
+    PORT = await findFreePort();
+    await startServer(PORT);
+  } catch (err) {
+    dialog.showErrorBox("MIA kunne ikke starte", `Serverfejl:\n${err.message}`);
+    app.quit();
+    return;
+  }
+
+  createTray();
+  createChatWindow();
+});
+
+// Keep running in tray when all windows are closed
+app.on("window-all-closed", () => {});
+app.on("before-quit", () => { app.isQuitting = true; });
+app.on("activate", showWindow); // macOS dock click

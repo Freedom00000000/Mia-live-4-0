@@ -810,18 +810,25 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     });
   }
 
-  async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
-    if (!GROQ_API_KEY) {
-      const ok = await promptForGroqKey();
-      if (!ok) throw new Error("Ingen API-nøgle");
-    }
+  // ─── Pollinations AI (free, no key required) ──────────────────────────────
+  async function fetchPollinations(messages, temperature = 0.95, maxTokens = 350) {
+    const res = await fetch("https://api.pollinations.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "openai-large", messages, max_tokens: maxTokens, temperature, private: true })
+    });
+    if (!res.ok) throw new Error(`Pollinations ${res.status}`);
+    const data = await res.json();
+    return data.choices[0].message.content.trim();
+  }
+
+  // retries=2 normalt, retries=0 for éngangskald (undgår kaskade-ventetid)
+  async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350, retries = 2) {
+    if (!GROQ_API_KEY) throw new Error("Ingen Groq-nøgle");
     const doFetch = async () => {
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${GROQ_API_KEY}`
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
         body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
       });
       if (!res.ok) {
@@ -836,12 +843,11 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       const data = await res.json();
       return data.choices[0].message.content.trim();
     };
-    // Retry on 429 with exponential backoff: 2s, 4s
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         return await doFetch();
       } catch (err) {
-        if (err.message?.includes("429") && attempt < 2) {
+        if (err.message?.includes("429") && attempt < retries) {
           await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
           continue;
         }
@@ -850,12 +856,27 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     }
   }
 
+  // Kalder den bedste tilgængelige AI — Groq hvis nøgle, ellers Pollinations
+  async function fetchAI(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
+    if (GROQ_API_KEY) {
+      try {
+        return await fetchGroq(messages, temperature, model, maxTokens);
+      } catch (err) {
+        if (err.message?.includes("429") || err.message?.includes("401") || err.message?.includes("403")) {
+          return await fetchPollinations(messages, temperature, Math.min(maxTokens, 500));
+        }
+        throw err;
+      }
+    }
+    return await fetchPollinations(messages, temperature, maxTokens);
+  }
+
   // Every 15 messages, compress recent context into a summary MIA can reference
   async function maybeUpdateSummary() {
     if (profile.messageCount % 15 !== 0 || profile.messageCount === 0) return;
     const recent = apiMessages.slice(-60).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
     try {
-      const summary = await fetchGroq([
+      const summary = await fetchAI([
         { role: "system", content: "Opsummer denne samtale i 3-5 korte sætninger på dansk: hvad talte de om, hvad lærte Mia om personen, hvad var stemningen. Vær konkret og faktuel." },
         { role: "user",   content: recent }
       ], 0.3, GROQ_MODELS.fast);
@@ -886,13 +907,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     const sysMsg = { role: "system", content: buildSystemPrompt(isSearch, isCode, analysis) };
 
     try {
-      let reply;
-      try {
-        reply = await fetchGroq([sysMsg, ...apiMessages], 0.95, model, maxTok);
-      } catch (_) {
-        await new Promise(r => setTimeout(r, 1400));
-        reply = await fetchGroq([sysMsg, ...apiMessages], 0.95, model, maxTok);
-      }
+      let reply = await fetchAI([sysMsg, ...apiMessages], 0.95, model, maxTok);
 
       if (isSearch) setVoiceStatus("");
 
@@ -907,7 +922,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
           { role: "user", content: "du brød karakter – svar igen som Mia, et rigtigt menneske, ingen AI-fraser." }
         ];
         try {
-          reply = cleanReply(await fetchGroq(repairMessages, 1.0, GROQ_MODELS.chat, maxTok));
+          reply = cleanReply(await fetchAI(repairMessages, 1.0, GROQ_MODELS.chat, maxTok));
         } catch (_) {
           return getLocalResponse(userMessage);
         }
@@ -923,7 +938,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
           { role: "user", content: "du gentog dig selv. svar anderledes – noget nyt, specifikt, ikke det du sagde sidst." }
         ];
         try {
-          reply = cleanReply(await fetchGroq(breakMessages, 1.1, GROQ_MODELS.chat, maxTok));
+          reply = cleanReply(await fetchAI(breakMessages, 1.1, GROQ_MODELS.chat, maxTok));
           if (hasAILeak(reply)) return getLocalResponse(userMessage);
         } catch (_) {}
       }
@@ -936,25 +951,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
     } catch (err) {
       if (err.message?.includes("401") || err.message?.includes("403")) {
-        return `⚠ API-nøglen virker ikke — klik 🔑 øverst og indsæt en ny nøgle`;
-      }
-      if (err.message?.includes("429")) {
-        // Fallback to fast lightweight model before giving up
-        try {
-          const fallback = cleanReply(
-            await fetchGroq([sysMsg, ...apiMessages], 0.95, GROQ_MODELS.fast, Math.min(maxTok, 500))
-          );
-          if (fallback && !hasAILeak(fallback)) {
-            lastMiaReply = fallback;
-            apiMessages.push({ role: "assistant", content: fallback });
-            saveApiCtx();
-            return fallback;
-          }
-        } catch (_) {}
-        return getLocalResponse(userMessage);
-      }
-      if (!GROQ_API_KEY) {
-        return `⚠ Ingen API-nøgle — klik 🔑 øverst og indsæt din Groq-nøgle (gratis på console.groq.com)`;
+        return `⚠ Groq-nøglen virker ikke — klik 🔑 øverst og indsæt en ny nøgle`;
       }
       return getLocalResponse(userMessage);
     }
@@ -1516,14 +1513,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   function updateKeyBar() {
     const bar = document.getElementById("noKeyBar");
-    if (bar) bar.style.display = GROQ_API_KEY ? "none" : "flex";
+    if (bar) bar.style.display = "none"; // Pollinations bruges automatisk — ingen nøgle krævet
   }
 
   function showModal(isNewUser) {
     modalTitle.textContent = isNewUser ? "Velkommen til MIA" : "Velkommen tilbage";
     nameRow.style.display  = isNewUser ? "flex" : "none";
     const apiKeyRow = document.getElementById("modalApiKeyRow");
-    if (apiKeyRow) apiKeyRow.style.display = GROQ_API_KEY ? "none" : "flex";
+    if (apiKeyRow) apiKeyRow.style.display = "none"; // API håndteres automatisk
     modal.classList.add("modal--visible");
     setTimeout(() => (isNewUser ? nameField : passField).focus(), 60);
   }

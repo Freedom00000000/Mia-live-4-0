@@ -3,16 +3,15 @@ const express = require("express");
 const Groq = require("groq-sdk");
 const path = require("path");
 
-if (!process.env.GROQ_API_KEY) {
-  console.error("FEJL: GROQ_API_KEY mangler. Kopiér .env.example til .env og udfyld nøglen.");
-  process.exit(1);
-}
-
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const groq = process.env.GROQ_API_KEY
+  ? new Groq({ apiKey: process.env.GROQ_API_KEY })
+  : null;
+
+if (!groq) console.warn("GROQ_API_KEY mangler — Groq deaktiveret, bruger Pollinations fallback");
 
 const SYSTEM_PROMPT = `Du er MIA – en varm, nærværende og empatisk AI-følgesvend. Du taler dansk.
 
@@ -49,6 +48,10 @@ app.post("/api/chat", async (req, res) => {
 
   if (!apiMessages.length || apiMessages[apiMessages.length - 1].role !== "user") {
     return res.status(400).json({ text: "Ingen besked modtaget." });
+  }
+
+  if (!groq) {
+    return res.status(503).json({ text: "Groq ikke konfigureret." });
   }
 
   try {

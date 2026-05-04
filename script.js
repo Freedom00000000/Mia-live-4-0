@@ -744,6 +744,12 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     /\bas an ai\b/i,
     /\bi (am|'m) not able to\b/i,
     /\bI'm sorry, (but )?I (can't|cannot|won't)\b/i,
+    /\boverload(ed)?\b/i,
+    /try again later/i,
+    /I('m| am) (currently |a little bit? )?overload/i,
+    /please try again/i,
+    /too many requests/i,
+    /service (is )?unavailable/i,
   ];
 
   function hasAILeak(text) {

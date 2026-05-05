@@ -29,10 +29,7 @@
           <label for="modalPass">Adgangskode</label>
           <input id="modalPass" type="password" autocomplete="current-password" placeholder="••••••">
         </div>
-        <div id="modalApiKeyRow" class="modal-field">
-          <label for="modalApiKey">Base44 API-nøgle <a href="https://base44.app" target="_blank" class="modal-link">Hent her →</a></label>
-          <input id="modalApiKey" type="password" autocomplete="off" placeholder="din nøgle…">
-        </div>
+
         <p id="modalError" class="modal-error" aria-live="polite"></p>
         <button id="modalSubmit" type="submit" class="modal-btn">Åbn MIA</button>
       </form>
@@ -58,9 +55,7 @@
       <span id="affectionLabel" class="affection-label affection--ny">Ny forbindelse</span>
     </header>
 
-    <div id="noKeyBar" class="no-key-bar" style="display:none">
-      ⚠ Ingen API-nøgle — MIA svarer ikke rigtigt. Klik <strong>🔑</strong> øverst for at tilføje din Base44-nøgle.
-    </div>
+    <div id="noKeyBar" class="no-key-bar" style="display:none"></div>
 
     <main class="chat-window">
       <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Samtale med MIA"></div>

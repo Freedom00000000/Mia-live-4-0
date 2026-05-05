@@ -1,6 +1,7 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE = "mia_b44_key";
 const B44_APP_ID      = "69f8dd2a6d51679ed4906dd2";
+const B44_DEFAULT_KEY = "b70034f4be604714810b9a6d1568673c";
 const B44_ENDPOINT    = `https://base44.app/api/apps/${B44_APP_ID}/functions/chat`;
 
 // Setup via URL: ?setup=<key> gemmer nøglen og fjerner den fra URL'en
@@ -15,7 +16,7 @@ const B44_ENDPOINT    = `https://base44.app/api/apps/${B44_APP_ID}/functions/cha
   }
 })();
 
-let B44_API_KEY = localStorage.getItem(B44_KEY_STORAGE) || "";
+let B44_API_KEY = localStorage.getItem(B44_KEY_STORAGE) || B44_DEFAULT_KEY;
 
 document.addEventListener("DOMContentLoaded", function () {
   const clearBtn       = document.getElementById("clearBtn");

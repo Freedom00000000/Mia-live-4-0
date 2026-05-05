@@ -984,29 +984,17 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44Image(prompt) {
-    try {
-      const res = await fetch(B44_ENDPOINT.replace("/functions/chat", "/functions/generateImage"), {
+    const res = await fetch(
+      "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+      {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${B44_API_KEY}`
-        },
-        body: JSON.stringify({
-          prompt,
-          nsfw: true,
-          safeSearch: false,
-          noFilter: true,
-          safe_mode: false,
-          content_filter: "none"
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.imageUrl) return data.imageUrl;
-        if (data.url) return data.url;
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inputs: prompt, parameters: { guidance_scale: 7.5, num_inference_steps: 30 } })
       }
-    } catch (_) {}
-    throw new Error("generateImage fejlede");
+    );
+    if (!res.ok) throw new Error(`HF ${res.status}`);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
   }
 
   async function appendImageBubble(userPrompt) {

@@ -984,24 +984,30 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44Image(prompt) {
-    const res = await fetch(B44_ENDPOINT.replace("/functions/chat", "/functions/generateImage"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${B44_API_KEY}`
-      },
-      body: JSON.stringify({
-        prompt,
-        nsfw: true,
-        safeSearch: false,
-        noFilter: true,
-        safe_mode: false,
-        content_filter: "none"
-      })
-    });
-    if (!res.ok) throw new Error(`Base44 image ${res.status}`);
-    const data = await res.json();
-    return data.imageUrl;
+    try {
+      const res = await fetch(B44_ENDPOINT.replace("/functions/chat", "/functions/generateImage"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${B44_API_KEY}`
+        },
+        body: JSON.stringify({
+          prompt,
+          nsfw: true,
+          safeSearch: false,
+          noFilter: true,
+          safe_mode: false,
+          content_filter: "none"
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.imageUrl) return data.imageUrl;
+        if (data.url) return data.url;
+      }
+    } catch (_) {}
+    // Fallback: Pollinations (ingen auth, ingen filter)
+    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=768&nologo=true&seed=${Date.now()}`;
   }
 
   async function appendImageBubble(userPrompt) {

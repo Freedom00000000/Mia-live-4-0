@@ -971,7 +971,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     return fn(msg);
   }
 
-  // ─── Image generation ──────────────────────────────────────────────────────
+  // ─── Image generation via Base44 ──────────────────────────────────────────
 
   const imageRx = /^(?:draw|paint|generate|create)\b|^(?:lav|tegn|generer|vis mig)\b.{0,50}(?:billede|tegning|foto|portræt|illustration)\b|\bbillede\s+af\b/i;
   function isImageRequest(msg) { return imageRx.test(msg); }
@@ -982,38 +982,21 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       .trim() || msg;
   }
 
-  function selectImageModel(prompt) {
-    const p = prompt.toLowerCase();
-    if (/realistisk|foto|photorealistic|virkelig|person|portræt|ansigt/.test(p)) return "flux-realism";
-    if (/anime|manga|tegneserie|cartoon|japansk/.test(p))                        return "flux-anime";
-    if (/3d|render|cgi|skulptur|statue/.test(p))                                 return "flux-3d";
-    return "flux";
+  async function fetchBase44Image(prompt) {
+    const res = await fetch(B44_ENDPOINT.replace("/functions/chat", "/functions/generateImage"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${B44_API_KEY}`
+      },
+      body: JSON.stringify({ prompt })
+    });
+    if (!res.ok) throw new Error(`Base44 image ${res.status}`);
+    const data = await res.json();
+    return data.imageUrl;
   }
 
-  function buildImagePromptString(userPrompt) {
-    const model = selectImageModel(userPrompt);
-    const moodWarm = (profile.mood || {}).warmth > 55;
-    const qualityBase = "masterpiece, highly detailed, sharp focus, professional";
-    const lightStyle  = moodWarm
-      ? "warm golden lighting, soft bokeh, intimate atmosphere"
-      : "cinematic lighting, dramatic contrast, vivid colors";
-    const modelStyle = {
-      "flux-realism": `${qualityBase}, photorealistic, ${lightStyle}, 8k photo`,
-      "flux-anime":   `${qualityBase}, anime illustration, vibrant colors, clean linework`,
-      "flux-3d":      `${qualityBase}, 3d render, octane render, smooth surfaces, ${lightStyle}`,
-      "flux":         `${qualityBase}, digital art, ${lightStyle}, concept art`
-    };
-    return `${userPrompt}, ${modelStyle[model]}`;
-  }
-
-  function buildImageUrl(prompt, seed) {
-    const model = selectImageModel(prompt);
-    const full  = buildImagePromptString(prompt);
-    return `https://image.pollinations.ai/prompt/${encodeURIComponent(full)}?model=${model}&width=768&height=768&nologo=true&safe=false&seed=${seed}`;
-  }
-
-  function appendImageBubble(userPrompt) {
-    const seed = Math.floor(Math.random() * 99999);
+  async function appendImageBubble(userPrompt) {
     const wrap = document.createElement("div");
     wrap.className = "bubble bubble--mia bubble--image";
 
@@ -1027,29 +1010,50 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     const img = document.createElement("img");
     img.className = "generated-image";
     img.alt = userPrompt;
-    img.src = buildImageUrl(userPrompt, seed);
-    img.onload  = () => {
-      imgWrap.classList.remove("img--loading");
-      caption.textContent = `"${userPrompt}"`;
-      regenBtn.disabled = false;
-      scrollToBottom();
-    };
-    img.onerror = () => {
-      imgWrap.classList.remove("img--loading");
-      caption.textContent = "kunne ikke generere – prøv igen";
-      regenBtn.disabled = false;
-    };
 
     const regenBtn = document.createElement("button");
     regenBtn.className = "regen-btn";
     regenBtn.disabled  = true;
     regenBtn.textContent = "↺ Nyt billede";
+
+    async function loadImage() {
+      imgWrap.classList.add("img--loading");
+      try {
+        const url = await fetchBase44Image(userPrompt);
+        img.src = url;
+        img.onload = () => {
+          imgWrap.classList.remove("img--loading");
+          caption.textContent = `"${userPrompt}"`;
+          regenBtn.disabled = false;
+          scrollToBottom();
+        };
+        img.onerror = () => {
+          imgWrap.classList.remove("img--loading");
+          caption.textContent = "kunne ikke generere – prøv igen";
+          regenBtn.disabled = false;
+        };
+      } catch (_) {
+        imgWrap.classList.remove("img--loading");
+        caption.textContent = "kunne ikke generere – prøv igen";
+        regenBtn.disabled = false;
+      }
+    }
+
     regenBtn.addEventListener("click", () => {
       regenBtn.disabled = true;
-      imgWrap.classList.add("img--loading");
       caption.textContent = `genererer igen…`;
-      img.src = buildImageUrl(userPrompt, Math.floor(Math.random() * 99999));
+      loadImage();
     });
+
+    imgWrap.appendChild(img);
+    wrap.appendChild(caption);
+    wrap.appendChild(imgWrap);
+    wrap.appendChild(regenBtn);
+    chatLog.appendChild(wrap);
+    scrollToBottom();
+
+    loadImage();
+  }
 
     imgWrap.appendChild(img);
     wrap.appendChild(caption);
@@ -1541,7 +1545,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     if (isImageRequest(input)) {
       const prompt = extractImagePrompt(input);
       await displayResponse(`vent et sekund... ||| jeg laver noget til dig, ${n()}`);
-      appendImageBubble(prompt);
+      await appendImageBubble(prompt);
       saveHistory();
       sendBtn.disabled   = false;
       userInput.disabled = false;

@@ -1462,7 +1462,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     modalTitle.textContent = isNewUser ? "Velkommen til MIA" : "Velkommen tilbage";
     nameRow.style.display  = isNewUser ? "flex" : "none";
     const apiKeyRow = document.getElementById("modalApiKeyRow");
-    if (apiKeyRow) apiKeyRow.style.display = "none"; // API håndteres automatisk
+    if (apiKeyRow) apiKeyRow.style.display = B44_API_KEY ? "none" : "flex";
     modal.classList.add("modal--visible");
     setTimeout(() => (isNewUser ? nameField : passField).focus(), 60);
   }

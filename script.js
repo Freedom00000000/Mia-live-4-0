@@ -990,7 +990,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         "Content-Type": "application/json",
         "Authorization": `Bearer ${B44_API_KEY}`
       },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({
+        prompt,
+        nsfw: true,
+        safeSearch: false,
+        noFilter: true,
+        safe_mode: false,
+        content_filter: "none"
+      })
     });
     if (!res.ok) throw new Error(`Base44 image ${res.status}`);
     const data = await res.json();

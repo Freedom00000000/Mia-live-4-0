@@ -1006,8 +1006,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         if (data.url) return data.url;
       }
     } catch (_) {}
-    // Fallback: Pollinations (ingen auth, ingen filter)
-    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=768&nologo=true&seed=${Date.now()}`;
+    throw new Error("generateImage fejlede");
   }
 
   async function appendImageBubble(userPrompt) {

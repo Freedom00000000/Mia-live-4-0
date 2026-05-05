@@ -30,8 +30,8 @@
           <input id="modalPass" type="password" autocomplete="current-password" placeholder="••••••">
         </div>
         <div id="modalApiKeyRow" class="modal-field">
-          <label for="modalApiKey">Groq API-nøgle <a href="https://console.groq.com" target="_blank" class="modal-link">Hent gratis →</a></label>
-          <input id="modalApiKey" type="password" autocomplete="off" placeholder="gsk_…">
+          <label for="modalApiKey">Base44 API-nøgle</label>
+          <input id="modalApiKey" type="password" autocomplete="off" placeholder="din nøgle…">
         </div>
         <p id="modalError" class="modal-error" aria-live="polite"></p>
         <button id="modalSubmit" type="submit" class="modal-btn">Åbn MIA</button>
@@ -44,7 +44,7 @@
       <div class="header-top">
         <h1 class="mia-title">MIA</h1>
         <div class="header-actions">
-          <button id="apiKeyBtn" class="clear-btn" title="Groq API-nøgle" aria-label="Indstil API-nøgle">🔑</button>
+          <button id="apiKeyBtn" class="clear-btn" title="Base44 API-nøgle" aria-label="Indstil API-nøgle">🔑</button>
           <button id="roleBtn" class="clear-btn" title="Rolle &amp; Prompt" aria-label="Tilpas MIA">⚙</button>
           <button id="exportBtn" class="clear-btn" title="Eksporter samtale" aria-label="Download samtale">↓</button>
           <button id="clearBtn" class="clear-btn" title="Ryd samtale" aria-label="Ryd samtalehistorik">↺</button>
@@ -59,7 +59,7 @@
     </header>
 
     <div id="noKeyBar" class="no-key-bar" style="display:none">
-      ⚠ Ingen API-nøgle — MIA svarer ikke rigtigt. Klik <strong>🔑</strong> øverst for at tilføje en gratis Groq- eller Gemini-nøgle.
+      ⚠ Ingen API-nøgle — MIA svarer ikke rigtigt. Klik <strong>🔑</strong> øverst for at tilføje din Base44-nøgle.
     </div>
 
     <main class="chat-window">
@@ -130,19 +130,15 @@
   <div id="apiKeyModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle">
     <div class="modal-box">
       <div class="modal-avatar">🔑</div>
-      <h2 id="apiKeyTitle" class="modal-title">API-nøgler</h2>
-      <p class="modal-desc">Begge er <strong>gratis</strong> — udfyld mindst én</p>
+      <h2 id="apiKeyTitle" class="modal-title">Base44 API-nøgle</h2>
+      <p class="modal-desc">Fra din Base44-konto — gemmes kun i din browser</p>
       <form id="apiKeyForm" class="modal-form" novalidate>
         <div class="modal-field">
-          <label for="apiKeyInput">Groq <span style="opacity:.6;font-size:.85em">console.groq.com</span></label>
-          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="gsk_…">
-        </div>
-        <div class="modal-field">
-          <label for="geminiKeyInput">Gemini <span style="opacity:.6;font-size:.85em">aistudio.google.com</span></label>
-          <input id="geminiKeyInput" type="password" autocomplete="off" placeholder="AIza…">
+          <label for="apiKeyInput">API-nøgle</label>
+          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="din nøgle…">
         </div>
         <p id="apiKeyError" class="modal-error" aria-live="polite"></p>
-        <button type="submit" class="modal-btn">Gem nøgler</button>
+        <button type="submit" class="modal-btn">Gem nøgle</button>
       </form>
     </div>
   </div>

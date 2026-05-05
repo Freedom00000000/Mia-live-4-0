@@ -1,21 +1,21 @@
-// ── Groq config ────────────────────────────────────────────────────────────
-const GROQ_KEY_STORAGE   = "mia_groq_key";
-const GEMINI_KEY_STORAGE = "mia_gemini_key";
+// ── Base44 config ───────────────────────────────────────────────────────────
+const B44_KEY_STORAGE = "mia_b44_key";
+const B44_APP_ID      = "69f8dd2a6d51679ed4906dd2";
+const B44_ENDPOINT    = `https://base44.app/api/apps/${B44_APP_ID}/functions/chat`;
 
-// Setup via URL: ?setup=gsk_... gemmer nøglen og fjerner den fra URL'en
+// Setup via URL: ?setup=<key> gemmer nøglen og fjerner den fra URL'en
 (function () {
   const p = new URLSearchParams(location.search);
   const k = p.get("setup");
-  if (k && k.startsWith("gsk_")) {
-    localStorage.setItem(GROQ_KEY_STORAGE, k);
+  if (k && k.length > 15) {
+    localStorage.setItem(B44_KEY_STORAGE, k);
     p.delete("setup");
     const clean = location.pathname + (p.toString() ? "?" + p : "");
     history.replaceState(null, "", clean);
   }
 })();
 
-let GROQ_API_KEY   = localStorage.getItem(GROQ_KEY_STORAGE)   || "";
-let GEMINI_API_KEY = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
+let B44_API_KEY = localStorage.getItem(B44_KEY_STORAGE) || "";
 
 document.addEventListener("DOMContentLoaded", function () {
   const clearBtn       = document.getElementById("clearBtn");
@@ -386,28 +386,12 @@ document.addEventListener("DOMContentLoaded", function () {
   // ─── Vision: MIA actually sees the image ───────────────────────────────────
 
   async function callMiaAIWithVision(dataUrl, filename) {
-    const sysMsg   = { role: "system", content: buildSystemPrompt() };
-    const visionMsg = {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: `[${n()} delte dette billede: "${filename}". Se det og reager som Mia – beskriv hvad du ser, hvad du tænker om det, hvad du føler. Vær specifik, personlig og ægte.]`
-        },
-        {
-          type: "image_url",
-          image_url: { url: dataUrl }
-        }
-      ]
-    };
-
-    // Log a text placeholder for context continuity
-    const contextEntry = `[delte billede: ${filename}]`;
-    apiMessages.push({ role: "user", content: contextEntry });
+    const contextEntry = `[${n()} delte dette billede: "${filename}". Se det og reager som Mia – beskriv hvad du ser, hvad du tænker om det, hvad du føler. Vær specifik, personlig og ægte.]`;
+    apiMessages.push({ role: "user", content: [{ type: "text", text: contextEntry }, { type: "image_url", image_url: { url: dataUrl } }] });
 
     try {
       let reply = cleanReply(
-        await fetchGroq([sysMsg, ...apiMessages.slice(0, -1), visionMsg], 0.95, GROQ_MODELS.vision)
+        await fetchBase44(apiMessages, buildSystemPrompt())
       );
       if (hasAILeak(reply)) reply = getLocalResponse(contextEntry);
       apiMessages.push({ role: "assistant", content: reply });
@@ -762,78 +746,28 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     return text.replace(/^\|\|\||\|\|\|$/g, "").trim();
   }
 
-  // ─── Smart model routing ───────────────────────────────────────────────────
-  // compound-beta      → live internet search (weather, news, prices, facts)
-  // llama-3.3-70b      → code + general conversation
-  // llama-3.1-8b       → fast summaries
+  const CODE_RX = /kode|code|program|javascript|python|html|css|funktion|fejl|bug|script|algoritme|database|sql|api|json|react|node|deploy|github|terminal|kommando/i;
 
-  const SEARCH_RX = /vejr|nyheder|aktuel|seneste nyt|hvad sker|i dag|lige nu|pris på|kurs|aktie|sport|resultat|score|vind(?:er|er)?|hvem er|hvornår|hvor mange|wikipedia|søg efter|find ud af|internet|online/i;
-  const CODE_RX   = /kode|code|program|javascript|python|html|css|funktion|fejl|bug|script|algoritme|database|sql|api|json|react|node|deploy|github|terminal|kommando/i;
-
-  const GROQ_MODELS = {
-    chat:   "llama-3.3-70b-versatile",
-    fast:   "llama-3.1-8b-instant",
-    search: "compound-beta",
-    vision: "llama-3.2-11b-vision-preview",
-  };
-
-  function pickModel(msg) {
-    if (SEARCH_RX.test(msg)) return GROQ_MODELS.search;
-    if (CODE_RX.test(msg))   return GROQ_MODELS.chat;
-    return GROQ_MODELS.chat;
-  }
-
-  function promptForGroqKey() {
+  function promptForB44Key() {
     return new Promise(resolve => {
-      const modal       = document.getElementById("apiKeyModal");
-      const form        = document.getElementById("apiKeyForm");
-      const groqInput   = document.getElementById("apiKeyInput");
-      const geminiInput = document.getElementById("geminiKeyInput");
-      const err         = document.getElementById("apiKeyError");
+      const modal = document.getElementById("apiKeyModal");
+      const form  = document.getElementById("apiKeyForm");
+      const input = document.getElementById("apiKeyInput");
+      const err   = document.getElementById("apiKeyError");
       if (!modal) { resolve(false); return; }
-
-      // Pre-fill existing keys
-      if (groqInput)   groqInput.value   = GROQ_API_KEY;
-      if (geminiInput) geminiInput.value = GEMINI_API_KEY;
+      if (input) input.value = B44_API_KEY;
       err.textContent = "";
       modal.classList.add("modal--visible");
-      setTimeout(() => groqInput?.focus(), 60);
-
+      setTimeout(() => input?.focus(), 60);
       function onSubmit(e) {
         e.preventDefault();
-        const groqKey   = groqInput?.value.trim()   || "";
-        const geminiKey = geminiInput?.value.trim() || "";
-
-        if (!groqKey && !geminiKey) {
-          err.textContent = "Udfyld mindst én nøgle";
+        const key = input?.value.trim() || "";
+        if (key.length < 16) {
+          err.textContent = "Ugyldig nøgle — den er for kort";
           return;
         }
-        if (groqKey && !groqKey.startsWith("gsk_")) {
-          err.textContent = "Groq-nøglen skal starte med gsk_";
-          groqInput.focus();
-          return;
-        }
-        if (geminiKey && !geminiKey.startsWith("AIza")) {
-          err.textContent = "Gemini-nøglen skal starte med AIza";
-          geminiInput?.focus();
-          return;
-        }
-
-        if (groqKey) {
-          GROQ_API_KEY = groqKey;
-          localStorage.setItem(GROQ_KEY_STORAGE, groqKey);
-        } else {
-          GROQ_API_KEY = "";
-          localStorage.removeItem(GROQ_KEY_STORAGE);
-        }
-        if (geminiKey) {
-          GEMINI_API_KEY = geminiKey;
-          localStorage.setItem(GEMINI_KEY_STORAGE, geminiKey);
-        } else {
-          GEMINI_API_KEY = "";
-          localStorage.removeItem(GEMINI_KEY_STORAGE);
-        }
-
+        B44_API_KEY = key;
+        localStorage.setItem(B44_KEY_STORAGE, key);
         updateKeyBar();
         modal.classList.remove("modal--visible");
         form.removeEventListener("submit", onSubmit);
@@ -846,74 +780,33 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   const apiKeyBtn = document.getElementById("apiKeyBtn");
   if (apiKeyBtn) {
     apiKeyBtn.addEventListener("click", async () => {
-      await promptForGroqKey();
+      await promptForB44Key();
     });
   }
 
-  // ─── Primær AI: lokal server (/api/chat) → Base44 → Groq → Pollinations ───
-  // API-nøgler håndteres server-side i .env — ingen nøgle nødvendig i browseren
-
-  async function fetchServer(messages, systemPromptStr, maxTokens = 350) {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: messages.filter(m => m.role !== "system"),
-        systemPrompt: systemPromptStr,
-        profile: { affection: profile.affection }
-      })
-    });
-    if (!res.ok) throw new Error(`Server ${res.status}`);
-    const data = await res.json();
-    return (data.text || "").trim();
-  }
-
-  // Fallback: Pollinations direkte (hvis serveren ikke kører)
-  async function fetchPollinations(messages, temperature = 0.95, maxTokens = 350) {
-    const res = await fetch("https://api.pollinations.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "openai-large", messages, max_tokens: maxTokens, temperature, private: true })
-    });
-    if (!res.ok) throw new Error(`Pollinations ${res.status}`);
-    const data = await res.json();
-    return data.candidates[0].content.parts[0].text.trim();
-  }
-
-  // Fallback: Groq direkte (hvis nøgle er sat i browseren)
-  async function fetchGroq(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350, retries = 2) {
-    if (!GROQ_API_KEY) throw new Error("Ingen Groq-nøgle");
-    const doFetch = async () => {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
-        body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
-      });
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) { GROQ_API_KEY = ""; localStorage.removeItem(GROQ_KEY_STORAGE); updateKeyBar(); }
-        throw new Error(`Groq ${res.status}`);
-      }
-      const data = await res.json();
-      return data.choices[0].message.content.trim();
-    };
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try { return await doFetch(); }
-      catch (err) {
-        if (err.message?.includes("429") && attempt < retries) { await new Promise(r => setTimeout(r, (attempt + 1) * 2000)); continue; }
-        throw err;
-      }
+  async function fetchBase44(messages, systemPrompt, temperature = 0.95) {
+    if (!B44_API_KEY) {
+      const ok = await promptForB44Key();
+      if (!ok) throw new Error("Ingen API-nøgle");
     }
-  }
-
-  // Kalder AI i prioriteret rækkefølge: server (Base44) → Groq → Pollinations
-  async function fetchAI(messages, temperature = 0.95, model = GROQ_MODELS.chat, maxTokens = 350) {
-    const sysMsg = messages.find(m => m.role === "system");
-    const sysStr = sysMsg?.content || "";
-    try { return await fetchServer(messages, sysStr, maxTokens); } catch (_) {}
-    if (GROQ_API_KEY) {
-      try { return await fetchGroq(messages, temperature, model, maxTokens); } catch (_) {}
+    const res = await fetch(B44_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${B44_API_KEY}`
+      },
+      body: JSON.stringify({ messages, systemPrompt, temperature })
+    });
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        B44_API_KEY = "";
+        localStorage.removeItem(B44_KEY_STORAGE);
+        updateKeyBar();
+      }
+      throw new Error(`Base44 ${res.status}`);
     }
-    throw new Error("Ingen AI-nøgle konfigureret");
+    const data = await res.json();
+    return (data.response || "").trim();
   }
 
   // Every 15 messages, compress recent context into a summary MIA can reference
@@ -921,10 +814,11 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     if (profile.messageCount % 15 !== 0 || profile.messageCount === 0) return;
     const recent = apiMessages.slice(-60).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
     try {
-      const summary = await fetchAI([
-        { role: "system", content: "Opsummer denne samtale i 3-5 korte sætninger på dansk: hvad talte de om, hvad lærte Mia om personen, hvad var stemningen. Vær konkret og faktuel." },
-        { role: "user",   content: recent }
-      ], 0.3, GROQ_MODELS.fast);
+      const summary = await fetchBase44(
+        [{ role: "user", content: recent }],
+        "Opsummer denne samtale i 3-5 korte sætninger på dansk: hvad talte de om, hvad lærte Mia om personen, hvad var stemningen. Vær konkret og faktuel.",
+        0.3
+      );
       profile.summary = summary;
       saveProfile();
     } catch (_) {}
@@ -941,62 +835,61 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   async function callMiaAI(userMessage) {
     apiMessages.push({ role: "user", content: userMessage });
 
-    const model    = pickModel(userMessage);
-    const isSearch = model === GROQ_MODELS.search;
     const isCode   = CODE_RX.test(userMessage);
     const analysis = analyzeMessage(userMessage);
-    const maxTok   = getMaxTokens(analysis);
-
-    if (isSearch) setVoiceStatus("🔍 søger på nettet…", "status--listening");
-
-    const sysMsg = { role: "system", content: buildSystemPrompt(isSearch, isCode, analysis) };
+    const sysPrompt = buildSystemPrompt(false, isCode, analysis);
 
     try {
-      let reply = await fetchAI([sysMsg, ...apiMessages], 0.95, model, maxTok);
-
-      if (isSearch) setVoiceStatus("");
+      let reply;
+      try {
+        reply = await fetchBase44(apiMessages, sysPrompt);
+      } catch (_) {
+        await new Promise(r => setTimeout(r, 1400));
+        reply = await fetchBase44(apiMessages, sysPrompt);
+      }
 
       reply = cleanReply(reply);
 
       // If model broke character, repair
       if (hasAILeak(reply)) {
-        const repairMessages = [
-          sysMsg,
+        const repairMsgs = [
           ...apiMessages,
           { role: "assistant", content: reply },
           { role: "user", content: "du brød karakter – svar igen som Mia, et rigtigt menneske, ingen AI-fraser." }
         ];
         try {
-          reply = cleanReply(await fetchAI(repairMessages, 1.0, GROQ_MODELS.chat, maxTok));
+          reply = cleanReply(await fetchBase44(repairMsgs, sysPrompt, 1.0));
         } catch (_) {
           return getLocalResponse(userMessage);
         }
         if (hasAILeak(reply)) return getLocalResponse(userMessage);
       }
 
-      // If exact repeat, force a fresh response at higher temperature
+      // If exact repeat, force a fresh response
       if (isRepeatReply(reply)) {
-        const breakMessages = [
-          sysMsg,
+        const breakMsgs = [
           ...apiMessages,
           { role: "assistant", content: reply },
           { role: "user", content: "du gentog dig selv. svar anderledes – noget nyt, specifikt, ikke det du sagde sidst." }
         ];
         try {
-          reply = cleanReply(await fetchAI(breakMessages, 1.1, GROQ_MODELS.chat, maxTok));
+          reply = cleanReply(await fetchBase44(breakMsgs, sysPrompt, 1.1));
           if (hasAILeak(reply)) return getLocalResponse(userMessage);
         } catch (_) {}
       }
 
       lastMiaReply = reply;
       apiMessages.push({ role: "assistant", content: reply });
-        saveApiCtx();
+      saveApiCtx();
       maybeUpdateSummary();
       return reply;
 
     } catch (err) {
       if (err.message?.includes("401") || err.message?.includes("403")) {
-        return `⚠ Groq-nøglen virker ikke — klik 🔑 øverst og indsæt en ny nøgle`;
+        return `⚠ API-nøglen virker ikke — klik 🔑 øverst og indsæt en ny nøgle`;
+      }
+      if (!B44_API_KEY) {
+        return `⚠ Ingen API-nøgle — klik 🔑 øverst og indsæt din Base44-nøgle`;
       }
       return getLocalResponse(userMessage);
     }
@@ -1558,7 +1451,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   function updateKeyBar() {
     const bar = document.getElementById("noKeyBar");
-    if (bar) bar.style.display = (GROQ_API_KEY || GEMINI_API_KEY) ? "none" : "";
+    if (bar) bar.style.display = B44_API_KEY ? "none" : "";
   }
 
   function showModal(isNewUser) {
@@ -1590,9 +1483,9 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       saveProfile();
     }
     const apiKeyVal = document.getElementById("modalApiKey")?.value.trim();
-    if (apiKeyVal && apiKeyVal.startsWith("gsk_")) {
-      GROQ_API_KEY = apiKeyVal;
-      localStorage.setItem(GROQ_KEY_STORAGE, apiKeyVal);
+    if (apiKeyVal && apiKeyVal.length >= 16) {
+      B44_API_KEY = apiKeyVal;
+      localStorage.setItem(B44_KEY_STORAGE, apiKeyVal);
     }
     hideModal();
     unlockMia();

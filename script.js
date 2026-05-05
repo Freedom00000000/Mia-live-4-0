@@ -386,8 +386,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // ─── Vision: MIA actually sees the image ───────────────────────────────────
 
   async function callMiaAIWithVision(dataUrl, filename) {
-    const contextEntry = `[${n()} delte billede: "${filename}". Reager som Mia – hvad forestiller du dig at du ser, hvad tænker du om det, hvad føler du. Vær specifik, personlig og ægte.]`;
-    apiMessages.push({ role: "user", content: contextEntry });
+    const contextEntry = `[${n()} delte dette billede: "${filename}". Se det og reager som Mia – beskriv hvad du ser, hvad du tænker om det, hvad du føler. Vær specifik, personlig og ægte.]`;
+    apiMessages.push({ role: "user", content: [{ type: "text", text: contextEntry }, { type: "image_url", image_url: { url: dataUrl } }] });
 
     try {
       let reply = cleanReply(

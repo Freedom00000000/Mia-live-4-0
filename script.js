@@ -1055,14 +1055,6 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     loadImage();
   }
 
-    imgWrap.appendChild(img);
-    wrap.appendChild(caption);
-    wrap.appendChild(imgWrap);
-    wrap.appendChild(regenBtn);
-    chatLog.appendChild(wrap);
-    scrollToBottom();
-  }
-
   // ─── UI helpers ────────────────────────────────────────────────────────────
 
   function scrollToBottom(smart = false) {

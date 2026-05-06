@@ -358,12 +358,13 @@ document.addEventListener("DOMContentLoaded", function () {
     fileInput.value = "";
 
     if (file.type.startsWith("image/")) {
-      const dataUrl = await readFileAsDataURL(file);
-      appendUserImage(dataUrl, file.name);
+      const rawUrl  = await readFileAsDataURL(file);
+      appendUserImage(rawUrl, file.name);
       learn(`delte billede: ${file.name}`);
       appendTyping();
       await new Promise(r => setTimeout(r, 300));
-      const response = await callMiaAIWithVision(dataUrl, file.name);
+      const smallUrl = await resizeImageDataUrl(rawUrl, 768);
+      const response = await callMiaAIWithVision(smallUrl, file.name);
       await displayResponse(response);
       saveHistory();
       return;
@@ -392,19 +393,33 @@ document.addEventListener("DOMContentLoaded", function () {
   // ─── Vision: MIA actually sees the image ───────────────────────────────────
 
   async function callMiaAIWithVision(dataUrl, filename) {
-    const contextEntry = `[${n()} delte dette billede: "${filename}". Se det og reager som Mia – beskriv hvad du ser, hvad du tænker om det, hvad du føler. Vær specifik, personlig og ægte.]`;
-    apiMessages.push({ role: "user", content: [{ type: "text", text: contextEntry }, { type: "image_url", image_url: { url: dataUrl } }] });
+    const contextEntry = `[${n()} delte dette billede: "${filename}". Se billedet og reager som Mia – beskriv præcist hvad du ser, hvad du tænker og føler om det. Vær specifik og personlig.]`;
+    const visionMsg = { role: "user", content: [
+      { type: "image_url", image_url: { url: dataUrl } },
+      { type: "text", text: contextEntry }
+    ]};
+    const msgs = [...apiMessages, visionMsg];
 
     try {
-      let reply = cleanReply(
-        await fetchBase44(apiMessages, buildSystemPrompt())
-      );
+      let reply = cleanReply(await fetchBase44(msgs, buildSystemPrompt()));
       if (hasAILeak(reply)) reply = getLocalResponse(contextEntry);
+      apiMessages.push(visionMsg);
       apiMessages.push({ role: "assistant", content: reply });
       saveApiCtx();
       return reply;
-    } catch (_) {
-      return getLocalResponse(contextEntry);
+    } catch (err) {
+      // Fallback: send as text description if vision fails
+      const fallbackMsg = { role: "user", content: contextEntry };
+      apiMessages.push(fallbackMsg);
+      try {
+        const reply = cleanReply(await fetchBase44(apiMessages, buildSystemPrompt()));
+        apiMessages.push({ role: "assistant", content: reply });
+        saveApiCtx();
+        return reply;
+      } catch (_) {
+        apiMessages.pop();
+        return getLocalResponse(contextEntry);
+      }
     }
   }
 
@@ -428,6 +443,25 @@ document.addEventListener("DOMContentLoaded", function () {
       r.onload  = e => resolve(e.target.result);
       r.onerror = reject;
       r.readAsDataURL(file);
+    });
+  }
+
+  function resizeImageDataUrl(dataUrl, maxSize = 768) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          if (width > height) { height = Math.round(height * maxSize / width); width = maxSize; }
+          else                { width  = Math.round(width  * maxSize / height); height = maxSize; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
     });
   }
 

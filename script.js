@@ -1387,13 +1387,13 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
       rolePanelEl?.classList.remove("memory-panel--open");
       roleSaveBtn.textContent = "Aktiveret ✓";
-      setTimeout(() => { roleSaveBtn.textContent = "Gem & Aktivér"; }, 2000);
+      setTimeout(() => { roleSaveBtn.textContent = "⚡ Aktivér"; }, 2000);
 
       const roleChanged   = profile.role         !== prevRole;
       const promptChanged = profile.customPrompt !== prevPrompt;
       if (!roleChanged && !promptChanged) return;
 
-      // Show a system note in chat
+      // System note in chat
       const roleData = ROLES[profile.role];
       const note = document.createElement("div");
       note.className = "bubble bubble--system-note";
@@ -1403,21 +1403,22 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       chatLog.appendChild(note);
       scrollToBottom();
 
-      // MIA confirms new role/prompt naturally in Danish
-      const nm = profile.name || "dig";
+      // MIA confirms directly – does NOT add to apiMessages, bypasses callMiaAI
       const roleData2 = ROLES[profile.role];
-      const trigger = roleChanged && promptChanged
-        ? `[SYSTEM: Du har netop skiftet til rollen "${roleData2.label}" og fået nye instruktioner. Bekræft dette kort og naturligt som Mia – max 2 sætninger, ingen liste, ingen forklaring. Bare sig hvem du er nu og at du er klar.]`
-        : roleChanged
-        ? `[SYSTEM: Du har netop skiftet til rollen "${roleData2.label}". Bekræft dette kort og naturligt som Mia – max 2 sætninger. Sig hvem du er nu og vis det med din tone med det samme.]`
-        : `[SYSTEM: Du har fået nye custom instruktioner fra brugeren. Bekræft kort og naturligt at du har modtaget og aktiveret dem – max 1-2 sætninger som Mia.]`;
+      const confirmSys = buildSystemPrompt(false, false, null);
+      const confirmMsg = roleChanged
+        ? `Sig kort hvem du er nu i din nye rolle som ${roleData2.label}. Max 2 sætninger. Tal direkte til mig, vis rollen med det samme.`
+        : `Du har fået nye instruktioner fra brugeren. Bekræft kort at de er aktiveret. Max 1-2 sætninger som Mia.`;
 
       sendBtn.disabled   = true;
       userInput.disabled = true;
       appendTyping();
       try {
-        const response = await callMiaAI(trigger);
-        await displayResponse(response);
+        const confirmMsgs = [...apiMessages, { role: "user", content: confirmMsg }];
+        const reply = cleanReply(await fetchBase44(confirmMsgs, confirmSys, 0.95));
+        apiMessages.push({ role: "assistant", content: reply });
+        saveApiCtx();
+        await displayResponse(reply);
         saveHistory();
       } catch (_) {
         removeTyping();

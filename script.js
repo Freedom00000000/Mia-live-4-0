@@ -998,19 +998,17 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       .trim() || msg;
   }
 
+  const DENO_IMAGE_URL = "https://your-project-name.deno.dev";
+
   async function fetchBase44Image(prompt) {
-    const endpoint = B44_ENDPOINT.replace("/functions/chat", "/functions/generateImage");
-    const res = await fetch(endpoint, {
+    const res = await fetch(DENO_IMAGE_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${B44_API_KEY}`
-      },
-      body: JSON.stringify({ prompt, nsfw: true, noFilter: true, safe_mode: false, content_filter: "none" })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt })
     });
-    if (!res.ok) throw new Error(`Base44 image ${res.status}`);
     const data = await res.json();
-    return data.imageUrl || data.url || data.image;
+    if (!res.ok) throw new Error(data.error || "Generation Failed");
+    return data.imageUrl;
   }
 
   async function appendImageBubble(userPrompt) {
@@ -1019,7 +1017,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
     const caption = document.createElement("p");
     caption.className = "image-caption";
-    caption.textContent = `genererer "${userPrompt}"…`;
+    caption.textContent = `Genererer billede…`;
 
     const imgWrap = document.createElement("div");
     imgWrap.className = "generated-image-wrap img--loading";
@@ -1035,10 +1033,10 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
     async function loadImage() {
       imgWrap.classList.add("img--loading");
+      regenBtn.disabled = true;
       try {
         const url = await fetchBase44Image(userPrompt);
         if (!url) throw new Error("API returned no URL");
-
         img.src = url;
         img.onload = () => {
           imgWrap.classList.remove("img--loading");
@@ -1054,16 +1052,15 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         };
       } catch (err) {
         imgWrap.classList.remove("img--loading");
-        img.src = "https://placehold.co/600x400?text=Generation+fejlede";
-        caption.innerHTML = `<span style="color:red">Generation fejlede (Filter eller Timeout)</span>`;
+        img.src = "https://placehold.co/600x400?text=Filter+eller+Timeout";
+        caption.innerHTML = `<span style="color:red">Kunne ikke generere (403/504)</span>`;
         regenBtn.disabled = false;
-        console.error("Technical Error:", err);
+        console.error("Image error:", err);
       }
     }
 
     regenBtn.addEventListener("click", () => {
-      regenBtn.disabled = true;
-      caption.textContent = `genererer igen…`;
+      caption.textContent = `Genererer igen…`;
       loadImage();
     });
 
@@ -1073,7 +1070,6 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     wrap.appendChild(regenBtn);
     chatLog.appendChild(wrap);
     scrollToBottom();
-
     loadImage();
   }
 

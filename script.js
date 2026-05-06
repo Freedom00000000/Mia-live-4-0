@@ -1037,6 +1037,8 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       imgWrap.classList.add("img--loading");
       try {
         const url = await fetchBase44Image(userPrompt);
+        if (!url) throw new Error("API returned no URL");
+
         img.src = url;
         img.onload = () => {
           imgWrap.classList.remove("img--loading");
@@ -1046,13 +1048,16 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         };
         img.onerror = () => {
           imgWrap.classList.remove("img--loading");
-          caption.textContent = "kunne ikke generere – prøv igen";
+          img.src = "https://placehold.co/600x400?text=Billedet+kunne+ikke+indlæses";
+          caption.textContent = "Billedet kunne ikke indlæses";
           regenBtn.disabled = false;
         };
-      } catch (_) {
+      } catch (err) {
         imgWrap.classList.remove("img--loading");
-        caption.textContent = "kunne ikke generere – prøv igen";
+        img.src = "https://placehold.co/600x400?text=Generation+fejlede";
+        caption.innerHTML = `<span style="color:red">Generation fejlede (Filter eller Timeout)</span>`;
         regenBtn.disabled = false;
+        console.error("Technical Error:", err);
       }
     }
 

@@ -998,7 +998,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       .trim() || msg;
   }
 
-  const B44_IMAGE_ENDPOINT = "https://mia-image-backend.deno.dev";
+  const B44_IMAGE_ENDPOINT = `https://base44.app/api/apps/${B44_APP_ID}/functions/generateImage`;
 
   async function fetchBase44Image(prompt) {
     const res = await fetch(B44_IMAGE_ENDPOINT, {

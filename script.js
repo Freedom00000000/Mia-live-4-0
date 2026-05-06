@@ -965,10 +965,18 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44Image(prompt) {
-    const imgEl = await puter.ai.txt2img(prompt, {
-      model: "stabilityai/stable-diffusion-xl-base-1.0"
+    const endpoint = B44_ENDPOINT.replace("/functions/chat", "/functions/generateImage");
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${B44_API_KEY}`
+      },
+      body: JSON.stringify({ prompt, nsfw: true, noFilter: true, safe_mode: false, content_filter: "none" })
     });
-    return imgEl.src;
+    if (!res.ok) throw new Error(`Base44 image ${res.status}`);
+    const data = await res.json();
+    return data.imageUrl || data.url || data.image;
   }
 
   async function appendImageBubble(userPrompt) {

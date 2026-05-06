@@ -1,8 +1,13 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
-const B44_KEY_STORAGE = "mia_b44_key";
-const B44_APP_ID      = "69f8dd2a6d51679ed4906dd2";
-const B44_DEFAULT_KEY = "b70034f4be604714810b9a6d1568673c";
-const B44_ENDPOINT    = `https://base44.app/api/apps/${B44_APP_ID}/functions/chat`;
+const B44_KEY_STORAGE    = "mia_b44_key";
+const B44_APP_ID         = "69f8dd2a6d51679ed4906dd2";
+const B44_DEFAULT_KEY    = "b70034f4be604714810b9a6d1568673c";
+const B44_ENDPOINT       = `https://base44.app/api/apps/${B44_APP_ID}/functions/chat`;
+
+// ── Prodia config ────────────────────────────────────────────────────────────
+const PRODIA_KEY_STORAGE = "mia_prodia_key";
+const PRODIA_ENDPOINT    = "https://inference.prodia.com/v2/job";
+let PRODIA_API_KEY = localStorage.getItem(PRODIA_KEY_STORAGE) || "";
 
 // Setup via URL: ?setup=<key> gemmer nøglen og fjerner den fra URL'en
 (function () {
@@ -753,12 +758,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
   function promptForB44Key() {
     return new Promise(resolve => {
-      const modal = document.getElementById("apiKeyModal");
-      const form  = document.getElementById("apiKeyForm");
-      const input = document.getElementById("apiKeyInput");
-      const err   = document.getElementById("apiKeyError");
+      const modal       = document.getElementById("apiKeyModal");
+      const form        = document.getElementById("apiKeyForm");
+      const input       = document.getElementById("apiKeyInput");
+      const prodiaInput = document.getElementById("prodiaKeyInput");
+      const err         = document.getElementById("apiKeyError");
       if (!modal) { resolve(false); return; }
       if (input) input.value = B44_API_KEY;
+      if (prodiaInput) prodiaInput.value = PRODIA_API_KEY;
       err.textContent = "";
       modal.classList.add("modal--visible");
       setTimeout(() => input?.focus(), 60);
@@ -766,11 +773,16 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         e.preventDefault();
         const key = input?.value.trim() || "";
         if (key.length < 16) {
-          err.textContent = "Ugyldig nøgle — den er for kort";
+          err.textContent = "Ugyldig Base44-nøgle — den er for kort";
           return;
         }
         B44_API_KEY = key;
         localStorage.setItem(B44_KEY_STORAGE, key);
+        const prodiaKey = prodiaInput?.value.trim() || "";
+        if (prodiaKey.length >= 8) {
+          PRODIA_API_KEY = prodiaKey;
+          localStorage.setItem(PRODIA_KEY_STORAGE, prodiaKey);
+        }
         updateKeyBar();
         modal.classList.remove("modal--visible");
         form.removeEventListener("submit", onSubmit);
@@ -986,20 +998,32 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44Image(prompt) {
-    const endpoint = B44_ENDPOINT.replace("/functions/chat", "/functions/generateImage");
-    const res = await fetch(endpoint, {
+    if (!PRODIA_API_KEY) {
+      const key = window.prompt("Prodia API-nøgle (gratis på app.prodia.com):");
+      if (!key || key.length < 8) throw new Error("Ingen Prodia-nøgle");
+      PRODIA_API_KEY = key.trim();
+      localStorage.setItem(PRODIA_KEY_STORAGE, PRODIA_API_KEY);
+    }
+    const res = await fetch(PRODIA_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${B44_API_KEY}`
+        "Accept": "image/jpeg",
+        "Authorization": `Bearer ${PRODIA_API_KEY}`
       },
-      body: JSON.stringify({ prompt, nsfw: true, noFilter: true, safe_mode: false })
+      body: JSON.stringify({
+        type: "inference.flux-fast.schnell.txt2img.v2",
+        config: { prompt }
+      })
     });
-    const text = await res.text();
-    console.log("Base44 image raw:", res.status, text);
-    if (!res.ok) throw new Error(`Base44 image ${res.status}: ${text}`);
-    const data = JSON.parse(text);
-    return data.imageUrl || data.url || data.image || Object.values(data)[0];
+    if (res.status === 401 || res.status === 403) {
+      PRODIA_API_KEY = "";
+      localStorage.removeItem(PRODIA_KEY_STORAGE);
+      throw new Error("Ugyldig Prodia-nøgle");
+    }
+    if (!res.ok) throw new Error(`Prodia ${res.status}`);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
   }
 
   async function appendImageBubble(userPrompt) {

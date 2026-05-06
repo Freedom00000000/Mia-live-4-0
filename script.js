@@ -998,32 +998,10 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44Image(prompt) {
-    if (!PRODIA_API_KEY) {
-      const key = window.prompt("Prodia API-nøgle (gratis på app.prodia.com):");
-      if (!key || key.length < 8) throw new Error("Ingen Prodia-nøgle");
-      PRODIA_API_KEY = key.trim();
-      localStorage.setItem(PRODIA_KEY_STORAGE, PRODIA_API_KEY);
-    }
-    const res = await fetch(PRODIA_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "image/jpeg",
-        "Authorization": `Bearer ${PRODIA_API_KEY}`
-      },
-      body: JSON.stringify({
-        type: "inference.flux-fast.schnell.txt2img.v2",
-        config: { prompt }
-      })
+    const imgEl = await puter.ai.txt2img(prompt, {
+      model: "stabilityai/stable-diffusion-xl-base-1.0"
     });
-    if (res.status === 401 || res.status === 403) {
-      PRODIA_API_KEY = "";
-      localStorage.removeItem(PRODIA_KEY_STORAGE);
-      throw new Error("Ugyldig Prodia-nøgle");
-    }
-    if (!res.ok) throw new Error(`Prodia ${res.status}`);
-    const blob = await res.blob();
-    return URL.createObjectURL(blob);
+    return imgEl.src;
   }
 
   async function appendImageBubble(userPrompt) {

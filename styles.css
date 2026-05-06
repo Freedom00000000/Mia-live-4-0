@@ -598,6 +598,7 @@ textarea.chat-input {
   color: rgba(255,255,255,0.38); margin-bottom: 10px;
 }
 .role-label--mt { margin-top: 20px; }
+.role-sublabel { font-size: 11px; color: rgba(255,255,255,0.28); margin-top: -6px; margin-bottom: 10px; }
 
 .role-pills { display: flex; flex-direction: column; gap: 8px; }
 

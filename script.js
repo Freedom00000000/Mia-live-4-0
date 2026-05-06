@@ -998,17 +998,22 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       .trim() || msg;
   }
 
-  const DENO_IMAGE_URL = "https://your-project-name.deno.dev";
+  const B44_IMAGE_ENDPOINT = `https://base44.app/api/apps/${B44_APP_ID}/functions/generateImage`;
 
   async function fetchBase44Image(prompt) {
-    const res = await fetch(DENO_IMAGE_URL, {
+    const res = await fetch(B44_IMAGE_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${B44_API_KEY}`
+      },
+      body: JSON.stringify({ prompt, nsfw: true, noFilter: true, safe_mode: false, content_filter: "none" })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Generation Failed");
-    return data.imageUrl;
+    if (!res.ok) throw new Error(data.error || `Base44 ${res.status}`);
+    const url = data.imageUrl || data.url || data.image;
+    if (!url || typeof url !== "string" || url.trim() === "") throw new Error("API returned no URL");
+    return url;
   }
 
   async function appendImageBubble(userPrompt) {
@@ -1022,6 +1027,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     const imgWrap = document.createElement("div");
     imgWrap.className = "generated-image-wrap img--loading";
 
+    // img.src intentionally NOT set here — only set after a valid URL is confirmed
     const img = document.createElement("img");
     img.className = "generated-image";
     img.alt = userPrompt;
@@ -1034,10 +1040,9 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     async function loadImage() {
       imgWrap.classList.add("img--loading");
       regenBtn.disabled = true;
+      img.removeAttribute("src");
       try {
         const url = await fetchBase44Image(userPrompt);
-        if (!url) throw new Error("API returned no URL");
-        img.src = url;
         img.onload = () => {
           imgWrap.classList.remove("img--loading");
           caption.textContent = `"${userPrompt}"`;
@@ -1050,6 +1055,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
           caption.textContent = "Billedet kunne ikke indlæses";
           regenBtn.disabled = false;
         };
+        img.src = url; // Set AFTER handlers are attached, only if URL is valid
       } catch (err) {
         imgWrap.classList.remove("img--loading");
         img.src = "https://placehold.co/600x400?text=Filter+eller+Timeout";

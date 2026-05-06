@@ -1007,7 +1007,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         "Content-Type": "application/json",
         "Authorization": `Bearer ${B44_API_KEY}`
       },
-      body: JSON.stringify({ prompt, nsfw: true, noFilter: true, safe_mode: false, content_filter: "none" })
+      body: JSON.stringify({ prompt })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Base44 ${res.status}`);

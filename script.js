@@ -20,7 +20,7 @@ const USER_ID = getOrCreateUserId();
 // ── ElevenLabs config ────────────────────────────────────────────────────────
 const EL_KEY_STORAGE  = "mia_el_key";
 const EL_VOICE_ID     = "vcCMoPBD8hflZ6AMbWjm";
-const EL_ENDPOINT     = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}/stream`;
+const EL_ENDPOINT     = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}`;
 let EL_API_KEY = localStorage.getItem(EL_KEY_STORAGE) || "";
 
 // ── Prodia config ────────────────────────────────────────────────────────────
@@ -360,6 +360,7 @@ document.addEventListener("DOMContentLoaded", function () {
         body: JSON.stringify({
           text,
           model_id: "eleven_multilingual_v2",
+          output_format: "mp3_44100_128",
           voice_settings: {
             stability: 0.42,
             similarity_boost: 0.88,
@@ -369,17 +370,23 @@ document.addEventListener("DOMContentLoaded", function () {
         })
       });
       if (!res.ok) {
-        if (res.status === 401) { EL_API_KEY = ""; localStorage.removeItem(EL_KEY_STORAGE); }
+        if (res.status === 401 || res.status === 403) { EL_API_KEY = ""; localStorage.removeItem(EL_KEY_STORAGE); }
         return false;
       }
       const blob = await res.blob();
+      if (!blob.size) return false;
       const url  = URL.createObjectURL(blob);
       return new Promise(resolve => {
         if (elAudio) { elAudio.pause(); elAudio = null; }
         elAudio = new Audio(url);
         elAudio.onended  = () => { URL.revokeObjectURL(url); elAudio = null; resolve(true); };
         elAudio.onerror  = () => { URL.revokeObjectURL(url); elAudio = null; resolve(false); };
-        elAudio.play().catch(() => { URL.revokeObjectURL(url); resolve(false); });
+        elAudio.play().then(() => {}).catch(err => {
+          console.warn("EL play() blocked:", err);
+          URL.revokeObjectURL(url);
+          elAudio = null;
+          resolve(false);
+        });
       });
     } catch (_) { return false; }
   }
@@ -757,6 +764,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // ── Open / close ──
   async function openVoiceCall() {
     if (!recognition) { setVoiceStatus("Stemme kræver Chrome eller Edge"); return; }
+    // Unlock HTML audio autoplay while we're inside a user gesture
+    try { const u = new Audio(); u.volume = 0; u.play().catch(() => {}); } catch (_) {}
     voiceCallActive = true;
     liveMode        = true;
     hadSpeech       = false;
@@ -963,33 +972,40 @@ document.addEventListener("DOMContentLoaded", function () {
     const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
     const mediaType = m ? m[1] : "image/jpeg";
     const b64data   = m ? m[2] : "";
-    const isCode    = CODE_RX.test(text);
-    const analysis  = analyzeMessage(text);
-    const sysPrompt = buildSystemPrompt(false, isCode, analysis);
+    const sysPrompt = buildSystemPrompt(false, CODE_RX.test(text), analyzeMessage(text));
+    const label     = `[Du ser ${n()} live via kamera. Reager naturligt på hvad du ser og hører.]`;
 
-    const visionMsg = {
-      role: "user",
-      content: [
-        { type: "image", source: { type: "base64", media_type: mediaType, data: b64data } },
-        { type: "text", text: `[Du kan se ${n()} via kamera]\n${text}` }
-      ]
-    };
-    apiMessages.push(visionMsg);
+    const buildAnthropicContent = () => [
+      { type: "image", source: { type: "base64", media_type: mediaType, data: b64data } },
+      { type: "text", text: `${label}\n${text}` }
+    ];
+    const buildOAIContent = () => [
+      { type: "image_url", image_url: { url: dataUrl } },
+      { type: "text", text: `${label}\n${text}` }
+    ];
 
-    try {
-      let reply = cleanReply(await fetchBase44(apiMessages, sysPrompt));
-      if (hasAILeak(reply)) throw new Error("leak");
-      if (isRepeatReply(reply)) throw new Error("repeat");
-      lastMiaReply = reply;
+    async function tryVision(contentFn) {
+      const visionMsg = { role: "user", content: contentFn() };
+      const msgs = [...apiMessages, visionMsg];
+      const reply = cleanReply(await fetchBase44(msgs, sysPrompt));
+      if (hasAILeak(reply)) throw new Error("ai-leak");
+      apiMessages.push(visionMsg);
       apiMessages.push({ role: "assistant", content: reply });
       saveApiCtx();
       maybeUpdateSummary();
       if (profile.messageCount % 8 === 0) reflectAndDevelop();
+      lastMiaReply = reply;
       return reply;
+    }
+
+    try {
+      return await tryVision(buildAnthropicContent);
     } catch (_) {
-      // Remove vision msg, fall back to text-only
-      apiMessages.pop();
-      return callMiaAI(text);
+      try {
+        return await tryVision(buildOAIContent);
+      } catch (__) {
+        return callMiaAI(text);
+      }
     }
   }
 

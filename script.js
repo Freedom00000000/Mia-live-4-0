@@ -357,10 +357,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ─── ElevenLabs TTS ────────────────────────────────────────────────────────
 
-  let elAudio = null;
+  let elAudio      = null;
+  let elSuspended  = false; // true when credits run out — skip EL for this session
 
   async function speakElevenLabs(text) {
-    if (!EL_API_KEY) return false;
+    if (!EL_API_KEY || elSuspended) return false;
     try {
       const res = await fetch(EL_ENDPOINT, {
         method: "POST",
@@ -382,6 +383,7 @@ document.addEventListener("DOMContentLoaded", function () {
       });
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) { EL_API_KEY = ""; localStorage.removeItem(EL_KEY_STORAGE); }
+        if (res.status === 429 || res.status >= 500)  { elSuspended = true; } // out of credits or server error
         return false;
       }
       const blob = await res.blob();
@@ -423,22 +425,22 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const dk = voices.filter(v => v.lang.startsWith("da"));
 
-    // 1. Named female Danish voices
+    // 1. Google high-quality Danish voices (Chrome desktop/Android)
+    const googleDk = dk.find(v => v.name.toLowerCase().includes("google"));
+    if (googleDk) { _cachedVoice = googleDk; return googleDk; }
+
+    // 2. Named female Danish voices
     for (const name of DK_FEMALE_NAMES) {
       const v = dk.find(v => v.name.toLowerCase().includes(name));
       if (v) { _cachedVoice = v; return v; }
     }
 
-    // 2. Any voice with "female" in lang or name
-    const female = voices.find(v =>
-      v.lang.startsWith("da") ||
-      v.name.toLowerCase().includes("female") ||
-      v.name.toLowerCase().includes("woman")
-    );
-    if (female) { _cachedVoice = female; return female; }
-
-    // 3. First Danish voice available
+    // 3. Any Danish voice
     if (dk.length) { _cachedVoice = dk[0]; return dk[0]; }
+
+    // 4. Norwegian as close fallback (very similar phonetics)
+    const no = voices.find(v => v.lang.startsWith("nb") || v.lang.startsWith("no"));
+    if (no) { _cachedVoice = no; return no; }
 
     return null;
   }
@@ -474,11 +476,12 @@ document.addEventListener("DOMContentLoaded", function () {
         if (voice) u.voice = voice;
         u.lang   = "da-DK";
         const energy = (profile.mood?.energy ?? 55) / 100;
-        const warmth = (profile.mood?.warmth ?? 20) / 100;
-        u.rate   = 0.88 + energy * 0.24;
-        u.pitch  = 1.08 + warmth * 0.18;
+        const warmth = (profile.mood?.warmth ?? 30) / 100;
+        u.rate   = 0.92 + energy * 0.18; // slightly slower = more natural
+        u.pitch  = 1.12 + warmth * 0.16; // higher base pitch for young female voice
         u.volume = 1.0;
         u.onend  = () => setTimeout(next, 260);
+        u.onerror = () => setTimeout(next, 100);
         speechSynthesis.speak(u);
       } catch (_) { next(); }
     }

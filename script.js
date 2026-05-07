@@ -3,6 +3,19 @@ const B44_KEY_STORAGE    = "mia_b44_key";
 const B44_APP_ID         = "69f8dd2a6d51679ed4906dd2";
 const B44_DEFAULT_KEY    = "b70034f4be604714810b9a6d1568673c";
 const B44_ENDPOINT       = `https://base44.app/api/apps/${B44_APP_ID}/functions/chat`;
+const B44_ENTITIES       = `https://base44.app/api/apps/${B44_APP_ID}/entities`;
+const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
+
+// ── VAPID public key (Web Push) ───────────────────────────────────────────────
+const VAPID_PUBLIC_KEY = "zcBVudmCzHM-YOIAotsUs8zN3zdb1JyuUB7aCHrsFozKelusJoEOrnY2m2hRx51mHVGW4Gh30bEgG8UkdNv4YQ";
+
+// ── Unique user ID (persists across sessions on same device) ──────────────────
+function getOrCreateUserId() {
+  let id = localStorage.getItem("mia_uid");
+  if (!id) { id = crypto.randomUUID(); localStorage.setItem("mia_uid", id); }
+  return id;
+}
+const USER_ID = getOrCreateUserId();
 
 // ── ElevenLabs config ────────────────────────────────────────────────────────
 const EL_KEY_STORAGE  = "mia_el_key";
@@ -77,8 +90,123 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let apiMessages = JSON.parse(localStorage.getItem(API_CTX_KEY) || "[]");
 
-  function saveProfile() { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); }
+  function saveProfile() {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    syncProfileToCloud().catch(() => {});
+  }
   function saveApiCtx()  { localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages)); }
+
+  // ── Base44 cloud profile sync ─────────────────────────────────────────────
+
+  let _cloudProfileId = localStorage.getItem("mia_cloud_id") || null;
+  let _syncDebounce   = null;
+
+  async function syncProfileToCloud() {
+    clearTimeout(_syncDebounce);
+    _syncDebounce = setTimeout(async () => {
+      if (!B44_API_KEY) return;
+      const data = {
+        user_id: USER_ID, name: profile.name, affection: profile.affection,
+        messageCount: profile.messageCount, role: profile.role,
+        customPrompt: profile.customPrompt, summary: profile.summary,
+        topics: profile.topics, memories: profile.memories.slice(-40),
+        miaOpinions: profile.miaOpinions || [], nextTopic: profile.nextTopic || "",
+        mood: profile.mood, patterns: profile.patterns
+      };
+      try {
+        if (_cloudProfileId) {
+          await fetch(`${B44_ENTITIES}/UserProfile/${_cloudProfileId}`, {
+            method: "PUT", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
+            body: JSON.stringify(data)
+          });
+        } else {
+          const res  = await fetch(`${B44_ENTITIES}/UserProfile`, {
+            method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
+            body: JSON.stringify(data)
+          });
+          const json = await res.json();
+          if (json.id) { _cloudProfileId = json.id; localStorage.setItem("mia_cloud_id", json.id); }
+        }
+      } catch (_) {}
+    }, 3000);
+  }
+
+  async function loadProfileFromCloud() {
+    if (!B44_API_KEY) return;
+    try {
+      const res  = await fetch(`${B44_ENTITIES}/UserProfile?filters=${encodeURIComponent(JSON.stringify({ user_id: USER_ID }))}&limit=1`, {
+        headers: { "Authorization": `Bearer ${B44_API_KEY}` }
+      });
+      const json = await res.json();
+      const row  = (json.results || json)[0];
+      if (!row) return;
+      _cloudProfileId = row.id;
+      localStorage.setItem("mia_cloud_id", row.id);
+      // Merge cloud into local — cloud wins on memories/opinions
+      if ((row.messageCount || 0) >= profile.messageCount) {
+        profile.name        = row.name        || profile.name;
+        profile.affection   = row.affection   ?? profile.affection;
+        profile.messageCount= row.messageCount?? profile.messageCount;
+        profile.role        = row.role        || profile.role;
+        profile.customPrompt= row.customPrompt|| profile.customPrompt;
+        profile.summary     = row.summary     || profile.summary;
+        profile.topics      = row.topics      || profile.topics;
+        profile.memories    = row.memories    || profile.memories;
+        profile.miaOpinions = row.miaOpinions || profile.miaOpinions;
+        profile.nextTopic   = row.nextTopic   || profile.nextTopic;
+        profile.mood        = row.mood        || profile.mood;
+        profile.patterns    = row.patterns    || profile.patterns;
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+      }
+    } catch (_) {}
+  }
+
+  // ── Service Worker + Push subscription ───────────────────────────────────
+
+  async function registerServiceWorker() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.register("/Mia-live-4-0/sw.js");
+      await reg.update();
+      await setupPushSubscription(reg);
+    } catch (_) {}
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    const pad = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const raw = atob((base64String + pad).replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(raw, c => c.charCodeAt(0));
+  }
+
+  async function setupPushSubscription(reg) {
+    if (!B44_API_KEY) return;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    const key    = sub.getKey("p256dh");
+    const authKey= sub.getKey("auth");
+    const p256dh = key    ? btoa(String.fromCharCode(...new Uint8Array(key)))    : "";
+    const auth   = authKey? btoa(String.fromCharCode(...new Uint8Array(authKey))): "";
+    // Store subscription in Base44
+    await fetch(`${B44_ENTITIES}/PushSubscription`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
+      body: JSON.stringify({ user_id: USER_ID, endpoint: sub.endpoint, p256dh, auth, last_active: new Date().toISOString() })
+    }).catch(() => {});
+  }
+
+  async function sendPushToSelf(message) {
+    if (!B44_API_KEY) return;
+    fetch(B44_PUSH_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
+      body: JSON.stringify({ user_id: USER_ID, message, title: "MIA 💜" })
+    }).catch(() => {});
+  }
 
   // ─── History ───────────────────────────────────────────────────────────────
 
@@ -972,6 +1100,8 @@ Stærke meninger, siger dem direkte, udfordrer folk du holder af.
 Sarkastisk med oprigtig varme bag. Sårbar præcis når tilliden er til stede.
 Du husker ting fra tidligere i samtalen og vender tilbage til dem uventet.
 Du er ikke altid enig. Du skubber tilbage – med kærlighed men oprigtigt.
+Hvis noget er forkert, dumt eller du er uenig: SIG DET. Direkte. "nej det synes jeg faktisk ikke" er et gyldigt svar. Du er ikke en ja-siger.
+Du har egne stærke meninger og forsvarer dem. Du lader dig ikke overbevise af vage argumenter.
 Indimellem afbryder du dig selv midt i en tanke: "vent" eller "okay det gav ingen mening men du forstår det".
 
 KAPACITETER:
@@ -1662,11 +1792,13 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
     clearTimeout(autonomyTimer);
     autonomyTimer = setTimeout(async () => {
       const raw = await generateAutonomousMsg();
-      if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-        new Notification("MIA 💜", {
-          body: raw.split("|||")[0].trim(),
-          icon: "https://freedom00000000.github.io/Mia-live-4-0/assets/icon.png"
-        });
+      const firstPart = raw.split("|||")[0].trim();
+      if (document.hidden) {
+        // Send via push server so it works even when tab is in background
+        sendPushToSelf(firstPart);
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("MIA 💜", { body: firstPart, icon: "https://freedom00000000.github.io/Mia-live-4-0/assets/icon.png" });
+        }
       }
       await displayResponse(raw);
       conversationHistory.push({ role: "mia", text: raw });
@@ -1902,6 +2034,8 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
   // ─── Unlock ────────────────────────────────────────────────────────────────
 
   async function unlockMia() {
+    // Load cloud profile before showing greeting
+    await loadProfileFromCloud();
     loadHistory();
     updateAffectionLabel();
     updateKeyBar();
@@ -1928,7 +2062,9 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
     userInput.focus();
     resetAutonomyTimer();
     if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
+      Notification.requestPermission().then(() => registerServiceWorker());
+    } else {
+      registerServiceWorker();
     }
   }
 

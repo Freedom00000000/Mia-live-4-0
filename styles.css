@@ -240,6 +240,22 @@ body {
   color: rgba(155,0,245,0.8);
   border-color: rgba(155,0,245,0.5);
 }
+.mic-btn.mic--live {
+  color: #9b00f5;
+  border-color: #9b00f5;
+  background: rgba(155,0,245,0.15);
+  box-shadow: 0 0 0 2px rgba(155,0,245,0.25);
+}
+.mic-btn.mic--live::after {
+  content: "LIVE";
+  position: absolute;
+  bottom: -8px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 7px; font-weight: 800;
+  color: #9b00f5; letter-spacing: 0.1em;
+  background: rgba(18,10,22,0.9);
+  padding: 1px 3px; border-radius: 3px;
+}
 @keyframes mic-pulse {
   0%, 100% { transform: scale(1);   opacity: 0.6; }
   50%       { transform: scale(1.2); opacity: 0.2; }

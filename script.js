@@ -212,20 +212,31 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ─── TTS ───────────────────────────────────────────────────────────────────
 
-  function speakWithCallback(text, onEnd) {
-    try {
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang  = "da-DK";
-      u.rate  = 0.82 + ((profile.mood?.energy ?? 55) / 100) * 0.36;
-      u.pitch = 0.88 + ((profile.mood?.warmth ?? 20) / 100) * 0.28;
-      u.onend = () => { setMicState("idle"); if (onEnd) onEnd(); };
-      setMicState("speaking");
-      speechSynthesis.speak(u);
-    } catch (_) { if (onEnd) onEnd(); }
+  function speakAll(parts, onEnd) {
+    let idx = 0;
+    function next() {
+      if (idx >= parts.length) {
+        setMicState("idle");
+        if (onEnd) onEnd();
+        return;
+      }
+      const text = parts[idx++];
+      try {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang  = "da-DK";
+        u.rate  = 0.82 + ((profile.mood?.energy ?? 55) / 100) * 0.36;
+        u.pitch = 0.88 + ((profile.mood?.warmth ?? 20) / 100) * 0.28;
+        u.onend = () => setTimeout(next, 280);
+        setMicState("speaking");
+        speechSynthesis.speak(u);
+      } catch (_) { next(); }
+    }
+    next();
   }
 
-  function speak(text) { speakWithCallback(text, null); }
+  function speakWithCallback(text, onEnd) { speakAll([text], onEnd); }
+  function speak(text) { speakAll([text], null); }
 
   // ─── Voice (Web Speech API) ────────────────────────────────────────────────
 
@@ -244,13 +255,14 @@ document.addEventListener("DOMContentLoaded", function () {
     if (state === "listening") {
       micBtn.classList.add("mic--listening");
       userInput.classList.add("input--listening");
-      setVoiceStatus("● lytter…", "status--listening");
+      setVoiceStatus(liveMode ? "● lytter… (live)" : "● lytter…", "status--listening");
     } else if (state === "speaking") {
       micBtn.classList.add("mic--speaking");
       setVoiceStatus("MIA taler…", "status--speaking");
     } else {
-      setVoiceStatus(liveMode ? "Live-tilstand aktiv — din tur" : "");
+      setVoiceStatus(liveMode ? "🎙 Live samtale — din tur" : "");
     }
+    micBtn.classList.toggle("mic--live", liveMode);
   }
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -309,6 +321,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function stopListening() {
     if (!recognition) return;
     liveMode = false;
+    micBtn.classList.remove("mic--live");
     try { recognition.stop(); } catch (_) {}
     setMicState("idle");
     setVoiceStatus("");
@@ -337,8 +350,9 @@ document.addEventListener("DOMContentLoaded", function () {
     micHoldTimer = setTimeout(() => {
       if (!recognition) return;
       liveMode = !liveMode;
+      micBtn.classList.toggle("mic--live", liveMode);
       if (liveMode) {
-        setVoiceStatus("Live-tilstand — hold for at stoppe", "status--listening");
+        setVoiceStatus("🎙 Live samtale aktiv — hold igen for at stoppe", "status--listening");
         startListening();
       } else {
         stopListening();
@@ -1202,8 +1216,8 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         await new Promise(r => setTimeout(r, 80));
       }
     }
-    // Speak only the first bubble to avoid overlap; restart mic in live mode when done
-    speakWithCallback(parts[0], () => {
+    // Speak all parts in sequence, then restart mic in live mode
+    speakAll(parts, () => {
       if (liveMode && !userInput.disabled) startListening();
     });
   }

@@ -670,6 +670,18 @@ document.addEventListener("DOMContentLoaded", function () {
     camActive = false;
   }
 
+  function captureVideoFrame() {
+    if (!camActive || !vcUserVideo || vcUserVideo.readyState < 2) return null;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width  = vcUserVideo.videoWidth  || 320;
+      canvas.height = vcUserVideo.videoHeight || 240;
+      // Draw un-mirrored (CSS mirror is display only)
+      canvas.getContext("2d").drawImage(vcUserVideo, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL("image/jpeg", 0.7);
+    } catch (_) { return null; }
+  }
+
   // ── Wave + silence detection animation ──
   function startWaveAnimation() {
     if (waveAnimFrame) cancelAnimationFrame(waveAnimFrame);
@@ -758,6 +770,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const hasAudio = await initAudioAnalyser();
     startWaveAnimation();
     if (!hasAudio) vcStatus.textContent = "Lytter… (tillad mikrofon)";
+    startCamera();
     startListening();
   }
 
@@ -942,6 +955,41 @@ document.addEventListener("DOMContentLoaded", function () {
           return getLocalResponse(contextEntry);
         }
       }
+    }
+  }
+
+  // MIA sees the user via camera + hears their voice
+  async function callMiaAIWithVoiceAndVision(text, dataUrl) {
+    const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    const mediaType = m ? m[1] : "image/jpeg";
+    const b64data   = m ? m[2] : "";
+    const isCode    = CODE_RX.test(text);
+    const analysis  = analyzeMessage(text);
+    const sysPrompt = buildSystemPrompt(false, isCode, analysis);
+
+    const visionMsg = {
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: mediaType, data: b64data } },
+        { type: "text", text: `[Du kan se ${n()} via kamera]\n${text}` }
+      ]
+    };
+    apiMessages.push(visionMsg);
+
+    try {
+      let reply = cleanReply(await fetchBase44(apiMessages, sysPrompt));
+      if (hasAILeak(reply)) throw new Error("leak");
+      if (isRepeatReply(reply)) throw new Error("repeat");
+      lastMiaReply = reply;
+      apiMessages.push({ role: "assistant", content: reply });
+      saveApiCtx();
+      maybeUpdateSummary();
+      if (profile.messageCount % 8 === 0) reflectAndDevelop();
+      return reply;
+    } catch (_) {
+      // Remove vision msg, fall back to text-only
+      apiMessages.pop();
+      return callMiaAI(text);
     }
   }
 
@@ -2175,7 +2223,10 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
     if (voiceCallActive) setVcState("thinking");
     await new Promise(r => setTimeout(r, 380 + Math.random() * 420));
     try {
-      const response = await callMiaAI(input);
+      const camFrame = (voiceCallActive && camActive) ? captureVideoFrame() : null;
+      const response = camFrame
+        ? await callMiaAIWithVoiceAndVision(input, camFrame)
+        : await callMiaAI(input);
       conversationHistory.push({ role: "mia", text: response });
       await displayResponse(response);
       saveHistory();

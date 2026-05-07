@@ -6,7 +6,7 @@ const B44_ENDPOINT       = `https://base44.app/api/apps/${B44_APP_ID}/functions/
 
 // ── ElevenLabs config ────────────────────────────────────────────────────────
 const EL_KEY_STORAGE  = "mia_el_key";
-const EL_VOICE_ID     = "CON8x9EicN9jCCtVlFPR";
+const EL_VOICE_ID     = "vcCMoPBD8hflZ6AMbWjm";
 const EL_ENDPOINT     = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}/stream`;
 let EL_API_KEY = localStorage.getItem(EL_KEY_STORAGE) || "";
 

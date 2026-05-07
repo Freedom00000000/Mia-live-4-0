@@ -466,8 +466,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ─── File upload ───────────────────────────────────────────────────────────
 
-  fileBtn.addEventListener("click", () => fileInput.click());
-
   fileInput.addEventListener("change", async e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -509,32 +507,53 @@ document.addEventListener("DOMContentLoaded", function () {
   // ─── Vision: MIA actually sees the image ───────────────────────────────────
 
   async function callMiaAIWithVision(dataUrl, filename) {
-    const contextEntry = `[${n()} delte dette billede: "${filename}". Se billedet og reager som Mia – beskriv præcist hvad du ser, hvad du tænker og føler om det. Vær specifik og personlig.]`;
-    const visionMsg = { role: "user", content: [
+    const contextEntry = `[${n()} delte dette billede: "${filename}". Se billedet og beskriv præcist hvad du ser – farver, motiv, stemning. Reager som Mia, personligt og specifikt.]`;
+
+    // Anthropic format: { type: "image", source: { type: "base64", ... } }
+    const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    const mediaType = (m ? m[1] : "image/jpeg");
+    const b64data   = m ? m[2] : "";
+
+    const buildVisionContent = () => [
+      { type: "image", source: { type: "base64", media_type: mediaType, data: b64data } },
+      { type: "text", text: contextEntry }
+    ];
+
+    // Fallback: OpenAI-style image_url (some providers support this instead)
+    const buildVisionContentOAI = () => [
       { type: "image_url", image_url: { url: dataUrl } },
       { type: "text", text: contextEntry }
-    ]};
-    const msgs = [...apiMessages, visionMsg];
+    ];
 
-    try {
-      let reply = cleanReply(await fetchBase44(msgs, buildSystemPrompt()));
-      if (hasAILeak(reply)) reply = getLocalResponse(contextEntry);
+    async function tryVision(contentFn) {
+      const visionMsg = { role: "user", content: contentFn() };
+      const msgs = [...apiMessages, visionMsg];
+      const reply = cleanReply(await fetchBase44(msgs, buildSystemPrompt()));
+      if (hasAILeak(reply)) throw new Error("ai-leak");
       apiMessages.push(visionMsg);
       apiMessages.push({ role: "assistant", content: reply });
       saveApiCtx();
       return reply;
-    } catch (err) {
-      // Fallback: send as text description if vision fails
-      const fallbackMsg = { role: "user", content: contextEntry };
-      apiMessages.push(fallbackMsg);
+    }
+
+    // Try Anthropic format → then OpenAI format → then text-only fallback
+    try {
+      return await tryVision(buildVisionContent);
+    } catch (_) {
       try {
-        const reply = cleanReply(await fetchBase44(apiMessages, buildSystemPrompt()));
-        apiMessages.push({ role: "assistant", content: reply });
-        saveApiCtx();
-        return reply;
-      } catch (_) {
-        apiMessages.pop();
-        return getLocalResponse(contextEntry);
+        return await tryVision(buildVisionContentOAI);
+      } catch (__) {
+        const fallbackMsg = { role: "user", content: contextEntry };
+        apiMessages.push(fallbackMsg);
+        try {
+          const reply = cleanReply(await fetchBase44(apiMessages, buildSystemPrompt()));
+          apiMessages.push({ role: "assistant", content: reply });
+          saveApiCtx();
+          return reply;
+        } catch (___) {
+          apiMessages.pop();
+          return getLocalResponse(contextEntry);
+        }
       }
     }
   }

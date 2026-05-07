@@ -212,6 +212,44 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ─── TTS ───────────────────────────────────────────────────────────────────
 
+  // Priority list for a young Danish female voice
+  const DK_FEMALE_NAMES = [
+    "helle", "ida", "sara", "camilla", "line", "mia", "sofie",
+    "female", "kvinde", "woman", "girl"
+  ];
+
+  let _cachedVoice = null;
+
+  function getBestDanishVoice() {
+    if (_cachedVoice) return _cachedVoice;
+    const voices = speechSynthesis.getVoices();
+    if (!voices.length) return null;
+
+    const dk = voices.filter(v => v.lang.startsWith("da"));
+
+    // 1. Named female Danish voices
+    for (const name of DK_FEMALE_NAMES) {
+      const v = dk.find(v => v.name.toLowerCase().includes(name));
+      if (v) { _cachedVoice = v; return v; }
+    }
+
+    // 2. Any voice with "female" in lang or name
+    const female = voices.find(v =>
+      v.lang.startsWith("da") ||
+      v.name.toLowerCase().includes("female") ||
+      v.name.toLowerCase().includes("woman")
+    );
+    if (female) { _cachedVoice = female; return female; }
+
+    // 3. First Danish voice available
+    if (dk.length) { _cachedVoice = dk[0]; return dk[0]; }
+
+    return null;
+  }
+
+  // Reload voice cache when browser populates the list
+  speechSynthesis.addEventListener("voiceschanged", () => { _cachedVoice = null; });
+
   function speakAll(parts, onEnd) {
     let idx = 0;
     function next() {
@@ -224,11 +262,17 @@ document.addEventListener("DOMContentLoaded", function () {
       const text = parts[idx++];
       try {
         speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
+        const u    = new SpeechSynthesisUtterance(text);
+        const voice = getBestDanishVoice();
+        if (voice) u.voice = voice;
         u.lang  = "da-DK";
-        u.rate  = 0.82 + ((profile.mood?.energy ?? 55) / 100) * 0.36;
-        u.pitch = 0.88 + ((profile.mood?.warmth ?? 20) / 100) * 0.28;
-        u.onend = () => setTimeout(next, 280);
+        // Young female: slightly higher pitch, natural pace
+        const energy = (profile.mood?.energy ?? 55) / 100;
+        const warmth = (profile.mood?.warmth ?? 20) / 100;
+        u.rate  = 0.88 + energy * 0.24;          // 0.88–1.12 (natural young pace)
+        u.pitch = 1.08 + warmth * 0.18;           // 1.08–1.26 (higher = younger/female)
+        u.volume = 1.0;
+        u.onend = () => setTimeout(next, 260);
         setMicState("speaking");
         if (voiceCallActive) { vcTranscript.textContent = text; setVcState("speaking"); vcCurrentState = "speaking"; }
         speechSynthesis.speak(u);

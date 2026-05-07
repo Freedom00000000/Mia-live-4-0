@@ -737,39 +737,26 @@ textarea.chat-input {
 .vc-overlay.vc--speaking  .vc-status { color: rgba(155,0,245,0.85); }
 .vc-overlay.vc--thinking  .vc-status { color: rgba(255,255,255,0.35); }
 
-/* Sound wave bars */
+/* Sound wave bars — heights driven by Web Audio API via JS */
 .vc-wave {
-  display: flex; align-items: center; gap: 5px; height: 40px;
+  display: flex; align-items: flex-end; gap: 4px; height: 48px;
+  padding-bottom: 4px;
 }
 .vc-wave span {
-  display: block; width: 4px; border-radius: 4px;
+  display: block; width: 5px; border-radius: 5px;
   background: rgba(155,0,245,0.35);
   height: 6px;
-  transition: background 0.3s;
+  transition: height 0.07s ease, background 0.25s ease;
 }
-.vc-overlay.vc--listening .vc-wave span {
-  background: #e040fb;
-  animation: vc-bar 0.9s ease-in-out infinite;
+.vc-overlay.vc--listening .vc-wave span { background: #e040fb; }
+.vc-overlay.vc--speaking  .vc-wave span { background: #9b00f5; }
+.vc-overlay.vc--thinking  .vc-wave span {
+  background: rgba(255,255,255,0.2);
+  animation: vc-breathe 2s ease-in-out infinite;
 }
-.vc-overlay.vc--listening .vc-wave span:nth-child(1) { animation-delay: 0s;    animation-duration: 0.8s; }
-.vc-overlay.vc--listening .vc-wave span:nth-child(2) { animation-delay: 0.15s; animation-duration: 1.0s; }
-.vc-overlay.vc--listening .vc-wave span:nth-child(3) { animation-delay: 0.05s; animation-duration: 0.7s; }
-.vc-overlay.vc--listening .vc-wave span:nth-child(4) { animation-delay: 0.2s;  animation-duration: 0.9s; }
-.vc-overlay.vc--listening .vc-wave span:nth-child(5) { animation-delay: 0.1s;  animation-duration: 1.1s; }
-
-.vc-overlay.vc--speaking .vc-wave span {
-  background: #9b00f5;
-  animation: vc-bar 0.6s ease-in-out infinite;
-}
-.vc-overlay.vc--speaking .vc-wave span:nth-child(1) { animation-delay: 0s;    animation-duration: 0.5s; }
-.vc-overlay.vc--speaking .vc-wave span:nth-child(2) { animation-delay: 0.1s;  animation-duration: 0.7s; }
-.vc-overlay.vc--speaking .vc-wave span:nth-child(3) { animation-delay: 0.05s; animation-duration: 0.45s; }
-.vc-overlay.vc--speaking .vc-wave span:nth-child(4) { animation-delay: 0.15s; animation-duration: 0.6s; }
-.vc-overlay.vc--speaking .vc-wave span:nth-child(5) { animation-delay: 0.08s; animation-duration: 0.8s; }
-
-@keyframes vc-bar {
+@keyframes vc-breathe {
   0%, 100% { height: 6px; }
-  50%       { height: 32px; }
+  50%       { height: 14px; }
 }
 
 /* Live transcript */

@@ -217,6 +217,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function next() {
       if (idx >= parts.length) {
         setMicState("idle");
+        if (voiceCallActive) { vcTranscript.textContent = ""; setVcState("listening"); }
         if (onEnd) onEnd();
         return;
       }
@@ -229,6 +230,7 @@ document.addEventListener("DOMContentLoaded", function () {
         u.pitch = 0.88 + ((profile.mood?.warmth ?? 20) / 100) * 0.28;
         u.onend = () => setTimeout(next, 280);
         setMicState("speaking");
+        if (voiceCallActive) { vcTranscript.textContent = text; setVcState("speaking"); }
         speechSynthesis.speak(u);
       } catch (_) { next(); }
     }
@@ -361,6 +363,106 @@ document.addEventListener("DOMContentLoaded", function () {
   });
   micBtn.addEventListener("pointerup",   () => clearTimeout(micHoldTimer));
   micBtn.addEventListener("pointerleave", () => clearTimeout(micHoldTimer));
+
+  // ─── Live voice call overlay ───────────────────────────────────────────────
+
+  const voiceCallBtn     = document.getElementById("voiceCallBtn");
+  const voiceCallOverlay = document.getElementById("voiceCallOverlay");
+  const vcStatus         = document.getElementById("vcStatus");
+  const vcTranscript     = document.getElementById("vcTranscript");
+  const vcEndBtn         = document.getElementById("vcEndBtn");
+
+  let voiceCallActive = false;
+
+  function setVcState(state) {
+    voiceCallOverlay.classList.remove("vc--listening", "vc--speaking", "vc--thinking");
+    if (state === "listening") {
+      voiceCallOverlay.classList.add("vc--listening");
+      vcStatus.textContent = "Lytter…";
+    } else if (state === "speaking") {
+      voiceCallOverlay.classList.add("vc--speaking");
+      vcStatus.textContent = "MIA taler…";
+    } else if (state === "thinking") {
+      voiceCallOverlay.classList.add("vc--thinking");
+      vcStatus.textContent = "Tænker…";
+    } else {
+      vcStatus.textContent = "";
+    }
+  }
+
+  function openVoiceCall() {
+    if (!recognition) {
+      setVoiceStatus("Stemme kræver Chrome eller Edge");
+      return;
+    }
+    voiceCallActive = true;
+    liveMode = true;
+    voiceCallOverlay.classList.add("vc--active");
+    voiceCallOverlay.setAttribute("aria-hidden", "false");
+    voiceCallBtn.classList.add("vc-btn--active");
+    vcTranscript.textContent = "";
+    setVcState("listening");
+    startListening();
+  }
+
+  function closeVoiceCall() {
+    voiceCallActive = false;
+    liveMode = false;
+    micBtn.classList.remove("mic--live");
+    voiceCallOverlay.classList.remove("vc--active", "vc--listening", "vc--speaking", "vc--thinking");
+    voiceCallOverlay.setAttribute("aria-hidden", "true");
+    voiceCallBtn.classList.remove("vc-btn--active");
+    speechSynthesis.cancel();
+    try { recognition.stop(); } catch (_) {}
+    setMicState("idle");
+    setVoiceStatus("");
+  }
+
+  if (voiceCallBtn) voiceCallBtn.addEventListener("click", openVoiceCall);
+  if (vcEndBtn)     vcEndBtn.addEventListener("click", closeVoiceCall);
+
+  // Show live transcript in overlay while user speaks
+  if (recognition) {
+    const _origOnResult = recognition.onresult;
+    recognition.onresult = e => {
+      const transcript = Array.from(e.results).map(r => r[0].transcript).join("");
+      if (voiceCallActive) vcTranscript.textContent = transcript;
+      userInput.value = transcript;
+      if (e.results[e.results.length - 1].isFinal) {
+        isListening = false;
+        userInput.placeholder = "Skriv til MIA…";
+        setMicState("idle");
+        if (voiceCallActive) {
+          vcTranscript.textContent = transcript;
+          setVcState("thinking");
+        }
+        if (transcript.trim()) handleSend();
+      }
+    };
+
+    const _origOnStart = recognition.onstart;
+    recognition.onstart = () => {
+      isListening = true;
+      setMicState("listening");
+      userInput.placeholder = "Taler…";
+      if (voiceCallActive) setVcState("listening");
+    };
+
+    recognition.onend = () => {
+      isListening = false;
+      if ((liveMode || voiceCallActive) && !userInput.disabled && !speechSynthesis.speaking) {
+        startListening();
+        if (voiceCallActive) setVcState("listening");
+      } else {
+        userInput.placeholder = "Skriv til MIA…";
+        if (!liveMode) setMicState("idle");
+      }
+    };
+  }
+
+  // Patch displayResponse to update vc state
+  const _origDisplayResponse = displayResponse;
+  // (speakAll already sets mic state; we hook into it via voiceCallActive flag)
 
   // ─── File upload ───────────────────────────────────────────────────────────
 
@@ -1549,9 +1651,10 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       `hej ||| jeg er Mia ||| vi skal nok lære hinanden at kende`,
     ];
     const raw = greetings[Math.floor(Math.random() * greetings.length)];
-    userInput.disabled = false;
-    sendBtn.disabled   = false;
-    micBtn.disabled    = false;
+    userInput.disabled   = false;
+    sendBtn.disabled     = false;
+    micBtn.disabled      = false;
+    if (voiceCallBtn) voiceCallBtn.disabled = false;
     await displayResponse(raw);
     saveHistory();
     userInput.focus();
@@ -1589,6 +1692,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
 
     await maybeReact(input);
     appendTyping();
+    if (voiceCallActive) setVcState("thinking");
     await new Promise(r => setTimeout(r, 380 + Math.random() * 420));
     try {
       const response = await callMiaAI(input);

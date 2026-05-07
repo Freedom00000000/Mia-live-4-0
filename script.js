@@ -111,7 +111,9 @@ document.addEventListener("DOMContentLoaded", function () {
         customPrompt: profile.customPrompt, summary: profile.summary,
         topics: profile.topics, memories: profile.memories.slice(-40),
         miaOpinions: profile.miaOpinions || [], nextTopic: profile.nextTopic || "",
-        mood: profile.mood, patterns: profile.patterns
+        mood: profile.mood, patterns: profile.patterns,
+        el_key: EL_API_KEY || undefined,
+        prodia_key: PRODIA_API_KEY || undefined
       };
       try {
         if (_cloudProfileId) {
@@ -157,6 +159,15 @@ document.addEventListener("DOMContentLoaded", function () {
         profile.mood        = row.mood        || profile.mood;
         profile.patterns    = row.patterns    || profile.patterns;
         localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+        // Restore API keys saved from another device
+        if (row.el_key && !EL_API_KEY) {
+          EL_API_KEY = row.el_key;
+          localStorage.setItem(EL_KEY_STORAGE, EL_API_KEY);
+        }
+        if (row.prodia_key && !PRODIA_API_KEY) {
+          PRODIA_API_KEY = row.prodia_key;
+          localStorage.setItem(PRODIA_KEY_STORAGE, PRODIA_API_KEY);
+        }
       }
     } catch (_) {}
   }
@@ -1381,6 +1392,8 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         updateKeyBar();
         modal.classList.remove("modal--visible");
         form.removeEventListener("submit", onSubmit);
+        // Sync keys to cloud immediately
+        syncProfileToCloud().catch(() => {});
         resolve(true);
       }
       form.addEventListener("submit", onSubmit);

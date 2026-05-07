@@ -4,6 +4,12 @@ const B44_APP_ID         = "69f8dd2a6d51679ed4906dd2";
 const B44_DEFAULT_KEY    = "b70034f4be604714810b9a6d1568673c";
 const B44_ENDPOINT       = `https://base44.app/api/apps/${B44_APP_ID}/functions/chat`;
 
+// ── ElevenLabs config ────────────────────────────────────────────────────────
+const EL_KEY_STORAGE  = "mia_el_key";
+const EL_VOICE_ID     = "CON8x9EicN9jCCtVlFPR";
+const EL_ENDPOINT     = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}/stream`;
+let EL_API_KEY = localStorage.getItem(EL_KEY_STORAGE) || "";
+
 // ── Prodia config ────────────────────────────────────────────────────────────
 const PRODIA_KEY_STORAGE = "mia_prodia_key";
 const PRODIA_ENDPOINT    = "https://inference.prodia.com/v2/job";
@@ -210,6 +216,50 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  // ─── ElevenLabs TTS ────────────────────────────────────────────────────────
+
+  let elAudio = null;
+
+  async function speakElevenLabs(text) {
+    if (!EL_API_KEY) return false;
+    try {
+      const res = await fetch(EL_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "xi-api-key": EL_API_KEY
+        },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_multilingual_v2",
+          voice_settings: {
+            stability: 0.42,
+            similarity_boost: 0.88,
+            style: 0.38,
+            use_speaker_boost: true
+          }
+        })
+      });
+      if (!res.ok) {
+        if (res.status === 401) { EL_API_KEY = ""; localStorage.removeItem(EL_KEY_STORAGE); }
+        return false;
+      }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      return new Promise(resolve => {
+        if (elAudio) { elAudio.pause(); elAudio = null; }
+        elAudio = new Audio(url);
+        elAudio.onended  = () => { URL.revokeObjectURL(url); elAudio = null; resolve(true); };
+        elAudio.onerror  = () => { URL.revokeObjectURL(url); elAudio = null; resolve(false); };
+        elAudio.play().catch(() => { URL.revokeObjectURL(url); resolve(false); });
+      });
+    } catch (_) { return false; }
+  }
+
+  function cancelElevenLabs() {
+    if (elAudio) { elAudio.pause(); elAudio.src = ""; elAudio = null; }
+  }
+
   // ─── TTS ───────────────────────────────────────────────────────────────────
 
   // Priority list for a young Danish female voice
@@ -252,7 +302,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function speakAll(parts, onEnd) {
     let idx = 0;
-    function next() {
+    async function next() {
       if (idx >= parts.length) {
         setMicState("idle");
         if (voiceCallActive) { vcTranscript.textContent = ""; setVcState("listening"); }
@@ -260,21 +310,29 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
       const text = parts[idx++];
+      setMicState("speaking");
+      if (voiceCallActive) { vcTranscript.textContent = text; setVcState("speaking"); vcCurrentState = "speaking"; }
+
+      // Try ElevenLabs first, fall back to Web Speech API
+      const elOk = await speakElevenLabs(text);
+      if (elOk) {
+        setTimeout(next, 200);
+        return;
+      }
+
+      // Web Speech fallback
       try {
         speechSynthesis.cancel();
-        const u    = new SpeechSynthesisUtterance(text);
+        const u     = new SpeechSynthesisUtterance(text);
         const voice = getBestDanishVoice();
         if (voice) u.voice = voice;
-        u.lang  = "da-DK";
-        // Young female: slightly higher pitch, natural pace
+        u.lang   = "da-DK";
         const energy = (profile.mood?.energy ?? 55) / 100;
         const warmth = (profile.mood?.warmth ?? 20) / 100;
-        u.rate  = 0.88 + energy * 0.24;          // 0.88–1.12 (natural young pace)
-        u.pitch = 1.08 + warmth * 0.18;           // 1.08–1.26 (higher = younger/female)
+        u.rate   = 0.88 + energy * 0.24;
+        u.pitch  = 1.08 + warmth * 0.18;
         u.volume = 1.0;
-        u.onend = () => setTimeout(next, 260);
-        setMicState("speaking");
-        if (voiceCallActive) { vcTranscript.textContent = text; setVcState("speaking"); vcCurrentState = "speaking"; }
+        u.onend  = () => setTimeout(next, 260);
         speechSynthesis.speak(u);
       } catch (_) { next(); }
     }
@@ -487,6 +545,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // ── Barge-in: user speaks while MIA is talking → interrupt ──
       if (state === "speaking" && level > 0.12 && !isListening) {
+        cancelElevenLabs();
         speechSynthesis.cancel();
         vcCurrentState = "listening";
         setVcState("listening");
@@ -528,6 +587,7 @@ document.addEventListener("DOMContentLoaded", function () {
     voiceCallOverlay.classList.remove("vc--active", "vc--listening", "vc--speaking", "vc--thinking");
     voiceCallOverlay.setAttribute("aria-hidden", "true");
     voiceCallBtn.classList.remove("vc-btn--active");
+    cancelElevenLabs();
     speechSynthesis.cancel();
     try { recognition.stop(); } catch (_) {}
     stopAudioAnalyser();
@@ -1019,10 +1079,12 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       const modal       = document.getElementById("apiKeyModal");
       const form        = document.getElementById("apiKeyForm");
       const input       = document.getElementById("apiKeyInput");
+      const elInput     = document.getElementById("elKeyInput");
       const prodiaInput = document.getElementById("prodiaKeyInput");
       const err         = document.getElementById("apiKeyError");
       if (!modal) { resolve(false); return; }
-      if (input) input.value = B44_API_KEY;
+      if (input)      input.value      = B44_API_KEY;
+      if (elInput)    elInput.value    = EL_API_KEY;
       if (prodiaInput) prodiaInput.value = PRODIA_API_KEY;
       err.textContent = "";
       modal.classList.add("modal--visible");
@@ -1036,6 +1098,11 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         }
         B44_API_KEY = key;
         localStorage.setItem(B44_KEY_STORAGE, key);
+        const elKey = elInput?.value.trim() || "";
+        if (elKey.length >= 8) {
+          EL_API_KEY = elKey;
+          localStorage.setItem(EL_KEY_STORAGE, elKey);
+        }
         const prodiaKey = prodiaInput?.value.trim() || "";
         if (prodiaKey.length >= 8) {
           PRODIA_API_KEY = prodiaKey;

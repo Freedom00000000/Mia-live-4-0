@@ -1,10 +1,10 @@
-@import url("https://rsms.me/inter/inter-ui.css");
+/* system fonts – no external dependencies */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   height: 100vh;
-  font-family: "Inter UI", "Inter", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #fff;
   display: flex;
   align-items: stretch;
@@ -598,6 +598,7 @@ textarea.chat-input {
   color: rgba(255,255,255,0.38); margin-bottom: 10px;
 }
 .role-label--mt { margin-top: 20px; }
+.role-sublabel { font-size: 11px; color: rgba(255,255,255,0.28); margin-top: -6px; margin-bottom: 10px; }
 
 .role-pills { display: flex; flex-direction: column; gap: 8px; }
 

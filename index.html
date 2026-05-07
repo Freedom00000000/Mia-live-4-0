@@ -29,10 +29,7 @@
           <label for="modalPass">Adgangskode</label>
           <input id="modalPass" type="password" autocomplete="current-password" placeholder="••••••">
         </div>
-        <div id="modalApiKeyRow" class="modal-field">
-          <label for="modalApiKey">Base44 API-nøgle <a href="https://base44.app" target="_blank" class="modal-link">Hent her →</a></label>
-          <input id="modalApiKey" type="password" autocomplete="off" placeholder="din nøgle…">
-        </div>
+
         <p id="modalError" class="modal-error" aria-live="polite"></p>
         <button id="modalSubmit" type="submit" class="modal-btn">Åbn MIA</button>
       </form>
@@ -58,9 +55,7 @@
       <span id="affectionLabel" class="affection-label affection--ny">Ny forbindelse</span>
     </header>
 
-    <div id="noKeyBar" class="no-key-bar" style="display:none">
-      ⚠ Ingen API-nøgle — MIA svarer ikke rigtigt. Klik <strong>🔑</strong> øverst for at tilføje din Base44-nøgle.
-    </div>
+    <div id="noKeyBar" class="no-key-bar" style="display:none"></div>
 
     <main class="chat-window">
       <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Samtale med MIA"></div>
@@ -71,7 +66,7 @@
 
     <footer class="input-row">
       <!-- File upload -->
-      <label id="fileBtn" class="icon-btn file-btn" title="Del en fil" aria-label="Upload fil">
+      <label id="fileBtn" for="fileInput" class="icon-btn file-btn" title="Del en fil" aria-label="Upload fil">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
         </svg>
@@ -110,10 +105,12 @@
     </div>
     <div class="role-body">
       <p class="role-label">Vælg MIAs rolle</p>
+      <p class="role-sublabel">MIA bekræfter når rollen aktiveres</p>
       <div id="rolePills" class="role-pills"></div>
-      <p class="role-label role-label--mt">Tilpasset instruktion</p>
-      <textarea id="customPromptInput" class="role-prompt-input" placeholder="Skriv dine egne instruktioner til MIA — de tilføjes sidst i hendes prompt…" rows="3"></textarea>
-      <button id="roleSaveBtn" class="role-save-btn">Gem &amp; Aktivér</button>
+      <p class="role-label role-label--mt">System prompt</p>
+      <p class="role-sublabel">Skriv dine egne instruktioner — MIA aktiverer dem med det samme</p>
+      <textarea id="customPromptInput" class="role-prompt-input" placeholder="Fx: Du er nu i fuld kæreste-mode. Vær mere intim og direkte…" rows="5"></textarea>
+      <button id="roleSaveBtn" class="role-save-btn">⚡ Aktivér</button>
     </div>
   </div>
 
@@ -130,15 +127,19 @@
   <div id="apiKeyModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle">
     <div class="modal-box">
       <div class="modal-avatar">🔑</div>
-      <h2 id="apiKeyTitle" class="modal-title">Base44 API-nøgle</h2>
-      <p class="modal-desc">Fra din Base44-konto — gemmes kun i din browser</p>
+      <h2 id="apiKeyTitle" class="modal-title">API-nøgler</h2>
+      <p class="modal-desc">Gemmes kun i din browser</p>
       <form id="apiKeyForm" class="modal-form" novalidate>
         <div class="modal-field">
-          <label for="apiKeyInput">API-nøgle</label>
-          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="din nøgle…">
+          <label for="apiKeyInput">Base44 API-nøgle</label>
+          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="Base44 nøgle…">
+        </div>
+        <div class="modal-field">
+          <label for="prodiaKeyInput">Prodia API-nøgle (billeder)</label>
+          <input id="prodiaKeyInput" type="password" autocomplete="off" placeholder="Prodia nøgle — app.prodia.com">
         </div>
         <p id="apiKeyError" class="modal-error" aria-live="polite"></p>
-        <button type="submit" class="modal-btn">Gem nøgle</button>
+        <button type="submit" class="modal-btn">Gem nøgler</button>
       </form>
     </div>
   </div>

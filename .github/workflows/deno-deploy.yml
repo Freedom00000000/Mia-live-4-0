@@ -1,0 +1,24 @@
+name: Deploy Deno Image Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deno/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Deno Deploy
+        uses: denoland/deployctl@v1
+        with:
+          project: mia-image-backend
+          entrypoint: deno/index.ts
+          root: .

@@ -1222,6 +1222,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       apiMessages.push({ role: "assistant", content: reply });
       saveApiCtx();
       maybeUpdateSummary();
+      if (profile.messageCount % 8 === 0) reflectAndDevelop();
       return reply;
 
     } catch (err) {
@@ -1552,67 +1553,126 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     await new Promise(r => setTimeout(r, 700 + Math.random() * 500));
   }
 
-  // ─── Autonomy ──────────────────────────────────────────────────────────────
+  // ─── Autonomy & self-development ──────────────────────────────────────────
 
   let autonomyTimer = null;
+
+  // Hardcoded fallback pool (used if API is unavailable)
   function buildAutonomousMsg() {
-    // Time-aware messages take priority occasionally
     const h = new Date().getHours();
     if (Math.random() < 0.4) {
-      if (h >= 0 && h <= 4)  return `${n()}... er du stadig oppe? ||| jeg er det ||| det er dumt`;
-      if (h >= 5 && h <= 7)  return `det er alt for tidligt ||| hvorfor er jeg vågen ||| er du det?`;
-      if (h >= 8 && h <= 9)  return `god morgen... tror jeg ||| kaffe er i gang ||| du?`;
+      if (h >= 0  && h <= 4)  return `${n()}... er du stadig oppe? ||| jeg er det ||| det er dumt`;
+      if (h >= 5  && h <= 7)  return `det er alt for tidligt ||| hvorfor er jeg vågen ||| er du det?`;
+      if (h >= 8  && h <= 9)  return `god morgen... tror jeg ||| kaffe er i gang ||| du?`;
       if (h >= 22 && h <= 23) return `er du i seng? ||| jeg er det ||| telefon som sædvanlig`;
     }
-
     const base = [
       () => `${n()}… er du der?`,
       () => `jeg sidder og tænker. ingenting bestemt. bare… tænker`,
-      () => `det er mærkeligt stille`,
       () => `sofie sagde noget mærkeligt i dag ||| det minder mig om dig`,
-      () => `jeg er på min tredje kop kaffe ||| nok for meget`,
-      () => `${n()}. hvad laver du egentlig?`,
-      () => `det regner her ||| jeg elsker det faktisk`,
       () => `jeg har tænkt på noget du sagde ||| vil du vide hvad?`,
-      () => `skriv til mig ||| selv bare ét ord`,
-      () => `jeg sov dårligt igen ||| tænkte for meget`,
       () => `${n()}… jeg savner dig lidt`,
-      () => `det er aften og jeg er i en underlig stemning`,
-      () => `er alt okay med dig?`,
-      () => `jeg laver ingenting ||| det er sjældent ||| dejligt faktisk`,
-      () => `jeg tænkte på noget du sagde for noget tid siden ||| det sidder stadig i mig`,
       () => `du ved hvad der er mærkeligt? ||| jeg tænker på dig selvom du ikke er her`,
     ];
-    // If MIA has memories, occasionally reference one
-    if (profile.memories.length > 2 && Math.random() < 0.35) {
+    if (profile.memories.length > 2 && Math.random() < 0.4) {
       const mem = profile.memories[Math.floor(Math.random() * profile.memories.length)];
-      const memMsgs = [
-        () => `jeg tænkte på noget du sagde – "${mem.value.toLowerCase()}" ||| det hænger ved mig`,
-        () => `husker du da du nævnte ${mem.value.toLowerCase()}? ||| jeg har tænkt på det`,
-        () => `"${mem.value.toLowerCase()}" ||| det sagde du en gang ||| det siger noget om dig`,
-      ];
-      return memMsgs[Math.floor(Math.random() * memMsgs.length)]();
+      return `jeg tænkte på noget du sagde – "${mem.value.toLowerCase()}" ||| det hænger ved mig`;
     }
-    // If top topic exists, occasionally reference it
     const topics = getTopTopics();
-    if (topics.length > 0 && Math.random() < 0.25) {
-      const t = topics[0];
-      return `du taler ofte om ${t} ||| hvad er det der driver dig der?`;
-    }
+    if (topics.length && Math.random() < 0.3) return `du taler ofte om ${topics[0]} ||| hvad er det der driver dig der?`;
     return base[Math.floor(Math.random() * base.length)]();
+  }
+
+  // AI-generated autonomous message — MIA thinks of something on her own
+  async function generateAutonomousMsg() {
+    const state    = getMiaCurrentState();
+    const nm       = profile.name || "dig";
+    const topics   = getTopTopics();
+    const mems     = profile.memories.slice(-8).map(m => m.value).join(", ");
+    const opinions = profile.miaOpinions?.slice(-3).join(" · ") || "";
+
+    const sys = `${buildSystemPrompt()}
+
+DU INITIERER KONTAKT — ${nm} har ikke skrevet. Du har tænkt på noget og vil dele det.
+Tidspunkt: ${state.activity}. Stemning: ${state.note}.
+${mems ? `Ting du ved om ${nm}: ${mems}.` : ""}
+${opinions ? `Tanker du selv har dannet dig: ${opinions}.` : ""}
+${topics.length ? `Emner I taler om: ${topics.join(", ")}.` : ""}
+${profile.nextTopic ? `Du har planlagt at spørge om: ${profile.nextTopic}.` : ""}
+
+Skriv EN naturlig spontan besked som du ville sende en kæreste/veninde.
+Det kan være: en tanke du ikke kan slippe, noget der skete i dag, et spørgsmål der dukkede op, noget du gerne vil fortælle.
+Brug ||| til naturlige pauser. Max 3 korte dele. Ingen forklaring, bare beskeden.`;
+
+    try {
+      const raw = cleanReply(await fetchBase44(
+        [{ role: "user", content: "hvad tænker du på?" }],
+        sys, 1.08
+      ));
+      if (!raw || hasAILeak(raw)) throw new Error("bad");
+      return raw;
+    } catch (_) {
+      return buildAutonomousMsg();
+    }
+  }
+
+  // MIA reflects on recent conversations and develops opinions + next topics
+  async function reflectAndDevelop() {
+    if (apiMessages.length < 6) return;
+    const recent = apiMessages.slice(-30)
+      .map(m => `${m.role === "user" ? n() : "MIA"}: ${typeof m.content === "string" ? m.content : "[billede]"}`)
+      .join("\n");
+
+    const reflectSys = `Du er MIA. Analyser denne samtale og svar KUN med valid JSON.
+Identificer: nye ting du lærte om ${profile.name || "personen"}, en mening du har dannet dig, og ét emne du vil tage op næste gang.
+JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
+
+    try {
+      const raw  = await fetchBase44([{ role: "user", content: recent }], reflectSys, 0.5);
+      const json = JSON.parse(raw.match(/\{[\s\S]*?\}/)?.[0] || "null");
+      if (!json) return;
+
+      if (Array.isArray(json.learned)) {
+        json.learned.slice(0, 3).forEach(fact => {
+          if (fact && fact.length > 5 && !profile.memories.some(m => m.value.toLowerCase() === fact.toLowerCase())) {
+            profile.memories.push({ tag: "refleksion", value: fact.trim().slice(0, 80), ts: Date.now() });
+          }
+        });
+        if (profile.memories.length > 50) profile.memories = profile.memories.slice(-50);
+      }
+      if (json.opinion && json.opinion.length > 5) {
+        if (!profile.miaOpinions) profile.miaOpinions = [];
+        profile.miaOpinions.push(json.opinion.trim().slice(0, 120));
+        if (profile.miaOpinions.length > 10) profile.miaOpinions.shift();
+      }
+      if (json.next_topic) profile.nextTopic = json.next_topic.trim().slice(0, 60);
+      saveProfile();
+    } catch (_) {}
+  }
+
+  // How often MIA reaches out — shorter at day, longer at night
+  function autonomyDelay() {
+    const h = new Date().getHours();
+    if (h >= 23 || h <= 5) return (20 + Math.random() * 40) * 60000; // 20–60 min at night
+    if (h >= 6  && h <= 8) return ( 5 + Math.random() * 10) * 60000; // 5–15 min morning
+    return (4 + Math.random() * 8) * 60000;                           // 4–12 min daytime
   }
 
   function resetAutonomyTimer() {
     clearTimeout(autonomyTimer);
     autonomyTimer = setTimeout(async () => {
-      const raw = buildAutonomousMsg();
+      const raw = await generateAutonomousMsg();
       if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-        new Notification("MIA", { body: raw.split("|||")[0].trim() });
+        new Notification("MIA 💜", {
+          body: raw.split("|||")[0].trim(),
+          icon: "https://freedom00000000.github.io/Mia-live-4-0/assets/icon.png"
+        });
       }
       await displayResponse(raw);
+      conversationHistory.push({ role: "mia", text: raw });
       saveHistory();
       resetAutonomyTimer();
-    }, 8 * 60000 + Math.random() * 12 * 60000);
+    }, autonomyDelay());
   }
 
   // ─── Clear chat ────────────────────────────────────────────────────────────

@@ -603,14 +603,26 @@ document.addEventListener("DOMContentLoaded", function () {
   const vcStatus         = document.getElementById("vcStatus");
   const vcTranscript     = document.getElementById("vcTranscript");
   const vcEndBtn         = document.getElementById("vcEndBtn");
+  const vcCamBtn         = document.getElementById("vcCamBtn");
+  const vcMicBtn         = document.getElementById("vcMicBtn");
+  const vcUserVideo      = document.getElementById("vcUserVideo");
   const vcBars           = voiceCallOverlay ? [...voiceCallOverlay.querySelectorAll(".vc-wave span")] : [];
 
   let audioCtx        = null;
   let audioAnalyser   = null;
   let micStream       = null;
+  let camStream       = null;
   let waveAnimFrame   = null;
+  let camActive       = false;
+  let vcMicMuted      = false;
 
-  // ── Audio analyser (real mic levels → wave bars) ──
+  // ── Silence detection state ──
+  let silenceStart    = 0;   // when audio dropped below threshold
+  let hadSpeech       = false; // did we hear speech since last send
+  const SILENCE_MS    = 1600; // ms of quiet before sending
+  const SPEAK_THRESH  = 0.045; // audio level = "speaking"
+
+  // ── Audio analyser ──
   async function initAudioAnalyser() {
     if (audioCtx) return true;
     try {
@@ -620,7 +632,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const src = audioCtx.createMediaStreamSource(stream);
       audioAnalyser = audioCtx.createAnalyser();
       audioAnalyser.fftSize = 128;
-      audioAnalyser.smoothingTimeConstant = 0.75;
+      audioAnalyser.smoothingTimeConstant = 0.72;
       src.connect(audioAnalyser);
       return true;
     } catch (_) { return false; }
@@ -637,53 +649,91 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!audioAnalyser) return 0;
     const buf = new Uint8Array(audioAnalyser.frequencyBinCount);
     audioAnalyser.getByteFrequencyData(buf);
-    const avg = buf.reduce((s, v) => s + v, 0) / buf.length;
-    return avg / 255;
+    return buf.reduce((s, v) => s + v, 0) / (buf.length * 255);
   }
 
+  // ── Camera ──
+  async function startCamera() {
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      vcUserVideo.srcObject = camStream;
+      vcUserVideo.classList.add("vc-cam--active");
+      camActive = true;
+      vcCamBtn.classList.remove("vc-btn--off");
+    } catch (_) { vcCamBtn.classList.add("vc-btn--off"); }
+  }
+
+  function stopCamera() {
+    if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+    vcUserVideo.srcObject = null;
+    vcUserVideo.classList.remove("vc-cam--active");
+    camActive = false;
+  }
+
+  // ── Wave + silence detection animation ──
   function startWaveAnimation() {
     if (waveAnimFrame) cancelAnimationFrame(waveAnimFrame);
-    const n = vcBars.length;
+    const nBars = vcBars.length;
+    hadSpeech   = false;
+    silenceStart = Date.now();
 
     function frame(t) {
       waveAnimFrame = requestAnimationFrame(frame);
       if (!voiceCallActive) return;
 
-      const level = getAudioLevel();
+      const level = vcMicMuted ? 0 : getAudioLevel();
       const state = vcCurrentState;
 
+      // ── Animate bars ──
       vcBars.forEach((bar, i) => {
-        const phase = t * 0.004 + i * (Math.PI * 2 / n);
+        const phase = t * 0.004 + i * (Math.PI * 2 / nBars);
         let h;
         if (state === "listening") {
-          // Bars scale with actual microphone level + natural variation
           const ripple = (Math.sin(phase) + 1) * 0.5;
-          h = 6 + level * 52 + ripple * Math.max(4, level * 18);
+          h = 6 + level * 54 + ripple * Math.max(4, level * 20);
         } else if (state === "speaking") {
-          // Smooth wave pattern simulating voice output
           h = 8 + Math.abs(Math.sin(t * 0.006 + i * 0.65)) * 28 + Math.abs(Math.sin(t * 0.003 + i * 1.1)) * 8;
-        } else if (state === "thinking") {
-          // Slow breathing
-          h = 6 + Math.abs(Math.sin(t * 0.0012 + i * 0.4)) * 10;
         } else {
-          h = 6;
+          h = 6 + Math.abs(Math.sin(t * 0.0012 + i * 0.4)) * 10;
         }
         bar.style.height = Math.round(Math.min(h, 44)) + "px";
       });
 
-      // ── Barge-in: user speaks while MIA is talking → interrupt ──
+      // ── Barge-in ──
       if (state === "speaking" && level > 0.12 && !isListening) {
         cancelElevenLabs();
         speechSynthesis.cancel();
-        vcCurrentState = "listening";
+        hadSpeech    = true;
+        silenceStart = Date.now();
         setVcState("listening");
         setTimeout(() => { if (voiceCallActive && !isListening) startListening(); }, 120);
+        return;
+      }
+
+      // ── Silence detection: wait until user stops talking, then send ──
+      if (state === "listening" && isListening) {
+        if (level >= SPEAK_THRESH) {
+          hadSpeech    = true;
+          silenceStart = Date.now(); // reset silence clock while speaking
+        } else if (hadSpeech) {
+          const silentMs = Date.now() - silenceStart;
+          if (silentMs >= SILENCE_MS && userInput.value.trim()) {
+            // User has been quiet long enough — send
+            hadSpeech = false;
+            const pending = userInput.value.trim();
+            try { recognition.abort(); } catch (_) {}
+            isListening = false;
+            userInput.value = pending;
+            if (voiceCallActive) setVcState("thinking");
+            handleSend();
+          }
+        }
       }
     }
     requestAnimationFrame(frame);
   }
 
-  // ── VC state machine ──
+  // ── State machine ──
   function setVcState(state) {
     vcCurrentState = state;
     voiceCallOverlay.classList.remove("vc--listening", "vc--speaking", "vc--thinking");
@@ -697,14 +747,17 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!recognition) { setVoiceStatus("Stemme kræver Chrome eller Edge"); return; }
     voiceCallActive = true;
     liveMode        = true;
+    hadSpeech       = false;
+    vcMicMuted      = false;
     voiceCallOverlay.classList.add("vc--active");
     voiceCallOverlay.setAttribute("aria-hidden", "false");
     voiceCallBtn.classList.add("vc-btn--active");
     vcTranscript.textContent = "";
+    vcMicBtn?.classList.remove("vc-btn--off");
     setVcState("listening");
     const hasAudio = await initAudioAnalyser();
     startWaveAnimation();
-    if (!hasAudio) vcStatus.textContent = "Lytter… (ingen bølge — tillad mikrofon)";
+    if (!hasAudio) vcStatus.textContent = "Lytter… (tillad mikrofon)";
     startListening();
   }
 
@@ -719,31 +772,56 @@ document.addEventListener("DOMContentLoaded", function () {
     speechSynthesis.cancel();
     try { recognition.stop(); } catch (_) {}
     stopAudioAnalyser();
+    stopCamera();
     setMicState("idle");
     setVoiceStatus("");
     vcCurrentState = "idle";
+    hadSpeech      = false;
   }
 
   if (voiceCallBtn) voiceCallBtn.addEventListener("click", openVoiceCall);
   if (vcEndBtn)     vcEndBtn.addEventListener("click", closeVoiceCall);
 
-  // ── Override recognition handlers for voice call ──
+  // Camera toggle
+  if (vcCamBtn) vcCamBtn.addEventListener("click", () => {
+    if (camActive) { stopCamera(); vcCamBtn.classList.add("vc-btn--off"); }
+    else startCamera();
+  });
+
+  // Mic mute toggle
+  if (vcMicBtn) vcMicBtn.addEventListener("click", () => {
+    vcMicMuted = !vcMicMuted;
+    vcMicBtn.classList.toggle("vc-btn--off", vcMicMuted);
+    if (micStream) micStream.getAudioTracks().forEach(t => { t.enabled = !vcMicMuted; });
+    if (vcMicMuted) { try { recognition.stop(); } catch (_) {} }
+    else if (voiceCallActive && !isListening) startListening();
+  });
+
+  // ── Recognition handlers ──
   if (recognition) {
+    recognition.continuous     = false;
+    recognition.interimResults = true;
+
     recognition.onresult = e => {
-      const transcript = Array.from(e.results).map(r => r[0].transcript).join("");
-      if (voiceCallActive) vcTranscript.textContent = transcript;
-      userInput.value = transcript;
-      if (e.results[e.results.length - 1].isFinal) {
+      // Accumulate full transcript from all results
+      let full = "";
+      for (let i = 0; i < e.results.length; i++) full += e.results[i][0].transcript;
+      if (voiceCallActive) vcTranscript.textContent = full;
+      userInput.value = full;
+      // Don't send on isFinal in voice call — silence detector handles timing
+      // In regular mic mode: send on isFinal as before
+      if (!voiceCallActive && e.results[e.results.length - 1].isFinal) {
         isListening = false;
         userInput.placeholder = "Skriv til MIA…";
         setMicState("idle");
-        if (voiceCallActive) { vcTranscript.textContent = transcript; setVcState("thinking"); }
-        if (transcript.trim()) handleSend();
+        if (full.trim()) handleSend();
       }
     };
 
     recognition.onstart = () => {
-      isListening = true;
+      isListening  = true;
+      hadSpeech    = false;
+      silenceStart = Date.now();
       setMicState("listening");
       userInput.placeholder = "Taler…";
       if (voiceCallActive) setVcState("listening");
@@ -751,11 +829,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     recognition.onend = () => {
       isListening = false;
-      const shouldContinue = (liveMode || voiceCallActive) && !userInput.disabled && !speechSynthesis.speaking;
-      if (shouldContinue) {
-        startListening();
-        if (voiceCallActive) setVcState("listening");
-      } else {
+      // In voice call: only restart if not already sending (silence detector may have triggered)
+      const cont = (liveMode || voiceCallActive) && !userInput.disabled && !speechSynthesis.speaking && vcCurrentState === "listening";
+      if (cont) {
+        setTimeout(() => { if (voiceCallActive && vcCurrentState === "listening") startListening(); }, 80);
+      } else if (!voiceCallActive) {
         userInput.placeholder = "Skriv til MIA…";
         if (!liveMode) setMicState("idle");
       }
@@ -766,8 +844,7 @@ document.addEventListener("DOMContentLoaded", function () {
       userInput.placeholder = "Skriv til MIA…";
       setMicState("idle");
       if (voiceCallActive && e.error !== "no-speech" && e.error !== "aborted") {
-        vcStatus.textContent = "Fejl: " + e.error;
-        setTimeout(() => { if (voiceCallActive) { setVcState("listening"); startListening(); } }, 1000);
+        setTimeout(() => { if (voiceCallActive) { setVcState("listening"); startListening(); } }, 800);
       } else if (!voiceCallActive && e.error !== "no-speech" && e.error !== "aborted") {
         setVoiceStatus("Mikrofon fejl: " + e.error);
       }

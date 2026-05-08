@@ -105,6 +105,10 @@ document.addEventListener("DOMContentLoaded", function () {
     clearTimeout(_syncDebounce);
     _syncDebounce = setTimeout(async () => {
       if (!B44_API_KEY) return;
+      // Only sync text messages (skip image/vision entries to keep payload small)
+      const cleanApiMsgs = apiMessages
+        .filter(m => typeof m.content === "string")
+        .slice(-50);
       const data = {
         user_id: USER_ID, name: profile.name, affection: profile.affection,
         messageCount: profile.messageCount, role: profile.role,
@@ -113,7 +117,9 @@ document.addEventListener("DOMContentLoaded", function () {
         miaOpinions: profile.miaOpinions || [], nextTopic: profile.nextTopic || "",
         mood: profile.mood, patterns: profile.patterns,
         el_key: EL_API_KEY || undefined,
-        prodia_key: PRODIA_API_KEY || undefined
+        prodia_key: PRODIA_API_KEY || undefined,
+        apiMessages: cleanApiMsgs,
+        chatHistory: conversationHistory.slice(-60)
       };
       try {
         if (_cloudProfileId) {
@@ -159,7 +165,7 @@ document.addEventListener("DOMContentLoaded", function () {
         profile.mood        = row.mood        || profile.mood;
         profile.patterns    = row.patterns    || profile.patterns;
         localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-        // Restore API keys saved from another device
+        // Restore API keys from another device
         if (row.el_key && !EL_API_KEY) {
           EL_API_KEY = row.el_key;
           localStorage.setItem(EL_KEY_STORAGE, EL_API_KEY);
@@ -167,6 +173,15 @@ document.addEventListener("DOMContentLoaded", function () {
         if (row.prodia_key && !PRODIA_API_KEY) {
           PRODIA_API_KEY = row.prodia_key;
           localStorage.setItem(PRODIA_KEY_STORAGE, PRODIA_API_KEY);
+        }
+        // Restore conversation context if this device has none
+        if (row.apiMessages?.length && apiMessages.length < 4) {
+          apiMessages = row.apiMessages;
+          localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages));
+        }
+        if (row.chatHistory?.length && conversationHistory.length < 4) {
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(row.chatHistory));
+          // chatHistory will be rendered by loadHistory() which runs after this
         }
       }
     } catch (_) {}

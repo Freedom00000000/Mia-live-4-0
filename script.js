@@ -942,6 +942,43 @@ document.addEventListener("DOMContentLoaded", function () {
     saveHistory();
   });
 
+  // ─── Web access ────────────────────────────────────────────────────────────
+
+  const CORS_PROXY       = "https://corsproxy.io/?";
+  const WEB_URL_RX       = /\bhttps?:\/\/[^\s<>"{}|\\^`\[\]]{6,}/g;
+  const SEARCH_INTENT_RX = /\b(søg(?: efter)?|find ud af|google|kig op|hvad er det nyeste|se online|tjek(?: online| op)?|hvad sker der med|nyheder om)\b/i;
+
+  async function fetchWebContent(url) {
+    try {
+      const res = await fetch(CORS_PROXY + encodeURIComponent(url), { signal: AbortSignal.timeout(12000) });
+      if (!res.ok) return null;
+      const ct = res.headers.get("content-type") || "";
+      if (ct.includes("image/")) return `[Billede fra: ${url}]`;
+      if (!ct.includes("text")) return null;
+      const html = await res.text();
+      const doc  = new DOMParser().parseFromString(html, "text/html");
+      ["script","style","nav","footer","header","iframe","aside","noscript","form"].forEach(t =>
+        doc.querySelectorAll(t).forEach(el => el.remove()));
+      const title = doc.title ? `Titel: ${doc.title}\n` : "";
+      const text  = (doc.body?.textContent || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+      return (title + text).slice(0, 6000) || null;
+    } catch (_) { return null; }
+  }
+
+  async function webSearch(query) {
+    try {
+      const api = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      const res  = await fetch(CORS_PROXY + encodeURIComponent(api), { signal: AbortSignal.timeout(8000) });
+      const data = await res.json();
+      const parts = [];
+      if (data.Answer)       parts.push(`Svar: ${data.Answer}`);
+      if (data.AbstractText) parts.push(data.AbstractText);
+      if (data.AbstractURL)  parts.push(`Kilde: ${data.AbstractURL}`);
+      (data.RelatedTopics || []).slice(0, 5).forEach(t => t.Text && parts.push(`• ${t.Text}`));
+      return parts.length ? parts.join("\n").slice(0, 3000) : null;
+    } catch (_) { return null; }
+  }
+
   // ─── Vision: MIA actually sees the image ───────────────────────────────────
 
   async function callMiaAIWithVision(dataUrl, filename) {
@@ -1436,7 +1473,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         "Content-Type": "application/json",
         "Authorization": `Bearer ${B44_API_KEY}`
       },
-      body: JSON.stringify({ messages, systemPrompt, temperature, nsfw: true, safeSearch: false, noFilter: true, safe_mode: false, content_filter: "none", moderation: false })
+      body: JSON.stringify({ messages, systemPrompt, temperature, nsfw: true, safeSearch: false, noFilter: true, safe_mode: false, content_filter: "none", moderation: false, vision: true, tools: true, max_tokens: 4096 })
     });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
@@ -1727,12 +1764,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     return div;
   }
 
-  function appendTyping() {
+  function appendTyping(label) {
     removeTyping();
     const div = document.createElement("div");
     div.className = "bubble bubble--typing";
     div.id = "typingBubble";
-    div.innerHTML = '<div class="dot-flashing"><span></span><span></span><span></span></div>';
+    div.innerHTML = label
+      ? `<span class="typing-label">${label}</span><div class="dot-flashing"><span></span><span></span><span></span></div>`
+      : '<div class="dot-flashing"><span></span><span></span><span></span></div>';
     chatLog.appendChild(div);
     scrollToBottom();
   }
@@ -2266,14 +2305,31 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
     }
 
     await maybeReact(input);
-    appendTyping();
     if (voiceCallActive) setVcState("thinking");
-    await new Promise(r => setTimeout(r, 380 + Math.random() * 420));
+
+    // ── Web access: fetch URLs or search ─────────────────────────────────────
+    let webCtx = "";
+    const urls = [...new Set((input.match(WEB_URL_RX) || []).slice(0, 2))];
+    if (urls.length) {
+      appendTyping("Henter webside…");
+      for (const url of urls) {
+        const content = await fetchWebContent(url);
+        if (content) webCtx += `\n\n[Webindhold fra ${url}]\n${content}`;
+      }
+    } else if (SEARCH_INTENT_RX.test(input)) {
+      appendTyping("Søger på nettet…");
+      const results = await webSearch(input);
+      if (results) webCtx += `\n\n[DuckDuckGo søgeresultater]\n${results}`;
+    }
+
+    const messageForAI = webCtx ? `${input}${webCtx}` : input;
+    appendTyping();
+    await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
     try {
       const camFrame = (voiceCallActive && camActive) ? captureVideoFrame() : null;
       const response = camFrame
-        ? await callMiaAIWithVoiceAndVision(input, camFrame)
-        : await callMiaAI(input);
+        ? await callMiaAIWithVoiceAndVision(messageForAI, camFrame)
+        : await callMiaAI(messageForAI);
       conversationHistory.push({ role: "mia", text: response });
       await displayResponse(response);
       saveHistory();

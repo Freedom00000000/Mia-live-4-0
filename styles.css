@@ -156,6 +156,7 @@ body {
 }
 .bubble--history { animation: none; opacity: 0.65; }
 
+.typing-label { display: block; font-size: 0.7rem; color: rgba(200,160,255,0.7); margin-bottom: 6px; letter-spacing: 0.03em; }
 .dot-flashing { display: flex; gap: 5px; align-items: center; height: 14px; }
 .dot-flashing span {
   width: 7px; height: 7px; border-radius: 50%;

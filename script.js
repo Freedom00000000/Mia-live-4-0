@@ -1,9 +1,7 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
-const B44_APP_ID         = "69f8dd2a6d51679ed4906dd2";
-const B44_DEFAULT_KEY    = "b70034f4be604714810b9a6d1568673c";
-const B44_ENDPOINT       = `https://base44.app/api/apps/${B44_APP_ID}/functions/chat`;
-const B44_ENTITIES       = `https://base44.app/api/apps/${B44_APP_ID}/entities`;
+const B44_APP_ID         = "69bb00905d52526b11e124a6";
+const B44_DEFAULT_KEY    = "8ace719fbbf34327bf590e03506f5bfe";
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 
 // ── VAPID public key (Web Push) ───────────────────────────────────────────────
@@ -92,100 +90,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function saveProfile() {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-    syncProfileToCloud().catch(() => {});
   }
   function saveApiCtx()  { localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages)); }
 
-  // ── Base44 cloud profile sync ─────────────────────────────────────────────
-
-  let _cloudProfileId = localStorage.getItem("mia_cloud_id") || null;
-  let _syncDebounce   = null;
-
-  async function syncProfileToCloud() {
-    clearTimeout(_syncDebounce);
-    _syncDebounce = setTimeout(async () => {
-      if (!B44_API_KEY) return;
-      // Only sync text messages (skip image/vision entries to keep payload small)
-      const cleanApiMsgs = apiMessages
-        .filter(m => typeof m.content === "string")
-        .slice(-50);
-      const data = {
-        user_id: USER_ID, name: profile.name, affection: profile.affection,
-        messageCount: profile.messageCount, role: profile.role,
-        customPrompt: profile.customPrompt, summary: profile.summary,
-        topics: profile.topics, memories: profile.memories.slice(-40),
-        miaOpinions: profile.miaOpinions || [], nextTopic: profile.nextTopic || "",
-        mood: profile.mood, patterns: profile.patterns,
-        el_key: EL_API_KEY || undefined,
-        prodia_key: PRODIA_API_KEY || undefined,
-        apiMessages: cleanApiMsgs,
-        chatHistory: conversationHistory.slice(-60)
-      };
-      try {
-        if (_cloudProfileId) {
-          await fetch(`${B44_ENTITIES}/UserProfile/${_cloudProfileId}`, {
-            method: "PUT", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
-            body: JSON.stringify(data)
-          });
-        } else {
-          const res  = await fetch(`${B44_ENTITIES}/UserProfile`, {
-            method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
-            body: JSON.stringify(data)
-          });
-          const json = await res.json();
-          if (json.id) { _cloudProfileId = json.id; localStorage.setItem("mia_cloud_id", json.id); }
-        }
-      } catch (_) {}
-    }, 3000);
-  }
-
-  async function loadProfileFromCloud() {
-    if (!B44_API_KEY) return;
-    try {
-      const res  = await fetch(`${B44_ENTITIES}/UserProfile?filters=${encodeURIComponent(JSON.stringify({ user_id: USER_ID }))}&limit=1`, {
-        headers: { "Authorization": `Bearer ${B44_API_KEY}` }
-      });
-      const json = await res.json();
-      const row  = (json.results || json)[0];
-      if (!row) return;
-      _cloudProfileId = row.id;
-      localStorage.setItem("mia_cloud_id", row.id);
-      // Merge cloud into local — cloud wins on memories/opinions
-      if ((row.messageCount || 0) >= profile.messageCount) {
-        profile.name        = row.name        || profile.name;
-        profile.affection   = row.affection   ?? profile.affection;
-        profile.messageCount= row.messageCount?? profile.messageCount;
-        profile.role        = row.role        || profile.role;
-        profile.customPrompt= row.customPrompt|| profile.customPrompt;
-        profile.summary     = row.summary     || profile.summary;
-        profile.topics      = row.topics      || profile.topics;
-        profile.memories    = row.memories    || profile.memories;
-        profile.miaOpinions = row.miaOpinions || profile.miaOpinions;
-        profile.nextTopic   = row.nextTopic   || profile.nextTopic;
-        profile.mood        = row.mood        || profile.mood;
-        profile.patterns    = row.patterns    || profile.patterns;
-        localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-        // Restore API keys from another device
-        if (row.el_key && !EL_API_KEY) {
-          EL_API_KEY = row.el_key;
-          localStorage.setItem(EL_KEY_STORAGE, EL_API_KEY);
-        }
-        if (row.prodia_key && !PRODIA_API_KEY) {
-          PRODIA_API_KEY = row.prodia_key;
-          localStorage.setItem(PRODIA_KEY_STORAGE, PRODIA_API_KEY);
-        }
-        // Restore conversation context if this device has none
-        if (row.apiMessages?.length && apiMessages.length < 4) {
-          apiMessages = row.apiMessages;
-          localStorage.setItem(API_CTX_KEY, JSON.stringify(apiMessages));
-        }
-        if (row.chatHistory?.length && conversationHistory.length < 4) {
-          localStorage.setItem(HISTORY_KEY, JSON.stringify(row.chatHistory));
-          // chatHistory will be rendered by loadHistory() which runs after this
-        }
-      }
-    } catch (_) {}
-  }
+  // ── Profile sync — localStorage only ────────────────────────────────────
 
   // ── Service Worker + Push subscription ───────────────────────────────────
 
@@ -205,34 +113,18 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   async function setupPushSubscription(reg) {
-    if (!B44_API_KEY) return;
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-      });
-    }
-    const key    = sub.getKey("p256dh");
-    const authKey= sub.getKey("auth");
-    const p256dh = key    ? btoa(String.fromCharCode(...new Uint8Array(key)))    : "";
-    const auth   = authKey? btoa(String.fromCharCode(...new Uint8Array(authKey))): "";
-    // Store subscription in Base44
-    await fetch(`${B44_ENTITIES}/PushSubscription`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
-      body: JSON.stringify({ user_id: USER_ID, endpoint: sub.endpoint, p256dh, auth, last_active: new Date().toISOString() })
-    }).catch(() => {});
+    try {
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+      }
+    } catch (_) {}
   }
 
-  async function sendPushToSelf(message) {
-    if (!B44_API_KEY) return;
-    fetch(B44_PUSH_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
-      body: JSON.stringify({ user_id: USER_ID, message, title: "MIA 💜" })
-    }).catch(() => {});
-  }
+  async function sendPushToSelf(_message) {}
 
   // ─── History ───────────────────────────────────────────────────────────────
 
@@ -1447,8 +1339,6 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
         updateKeyBar();
         modal.classList.remove("modal--visible");
         form.removeEventListener("submit", onSubmit);
-        // Sync keys to cloud immediately
-        syncProfileToCloud().catch(() => {});
         resolve(true);
       }
       form.addEventListener("submit", onSubmit);
@@ -1463,28 +1353,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44(messages, systemPrompt, temperature = 0.95) {
-    if (!B44_API_KEY) {
-      const ok = await promptForB44Key();
-      if (!ok) throw new Error("Ingen API-nøgle");
-    }
-    const res = await fetch(B44_ENDPOINT, {
+    const res = await fetch("/api/chat", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${B44_API_KEY}`
-      },
-      body: JSON.stringify({ messages, systemPrompt, temperature, nsfw: true, safeSearch: false, noFilter: true, safe_mode: false, content_filter: "none", moderation: false, vision: true, tools: true, max_tokens: 4096 })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages, systemPrompt, temperature })
     });
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        B44_API_KEY = "";
-        localStorage.removeItem(B44_KEY_STORAGE);
-        updateKeyBar();
-      }
-      throw new Error(`Base44 ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`chat ${res.status}`);
     const data = await res.json();
-    return (data.response || "").trim();
+    return (data.text || "").trim();
   }
 
   // Every 15 messages, compress recent context into a summary MIA can reference
@@ -1661,7 +1537,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       .trim() || msg;
   }
 
-  const B44_IMAGE_ENDPOINT = `https://base44.app/api/apps/${B44_APP_ID}/functions/generateImage`;
+  const B44_IMAGE_ENDPOINT = `https://${B44_SUBDOMAIN}.base44.app/api/functions/generateImage`;
 
   async function fetchBase44Image(prompt) {
     const res = await fetch(B44_IMAGE_ENDPOINT, {
@@ -2244,8 +2120,6 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
   // ─── Unlock ────────────────────────────────────────────────────────────────
 
   async function unlockMia() {
-    // Load cloud profile before showing greeting
-    await loadProfileFromCloud();
     loadHistory();
     updateAffectionLabel();
     updateKeyBar();

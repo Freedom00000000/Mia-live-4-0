@@ -1,9 +1,8 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
-const B44_SUBDOMAIN      = "raw-vision-lab";
-const B44_DEFAULT_KEY    = "8ace719fbbf34327bf590e03506f5bfe";
-const B44_ENDPOINT       = `https://${B44_SUBDOMAIN}.base44.app/api/functions/chat`;
-const B44_ENTITIES       = `https://${B44_SUBDOMAIN}.base44.app/api/entities`;
+const B44_APP_ID         = "69f8dd2a6d51679ed4906dd2";
+const B44_DEFAULT_KEY    = "b70034f4be604714810b9a6d1568673c";
+const B44_ENTITIES       = `https://base44.app/api/apps/${B44_APP_ID}/entities`;
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 
 // ── VAPID public key (Web Push) ───────────────────────────────────────────────
@@ -124,12 +123,12 @@ document.addEventListener("DOMContentLoaded", function () {
       try {
         if (_cloudProfileId) {
           await fetch(`${B44_ENTITIES}/UserProfile/${_cloudProfileId}`, {
-            method: "PUT", headers: { "Content-Type": "application/json", "api-key": B44_API_KEY },
+            method: "PUT", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
             body: JSON.stringify(data)
           });
         } else {
           const res  = await fetch(`${B44_ENTITIES}/UserProfile`, {
-            method: "POST", headers: { "Content-Type": "application/json", "api-key": B44_API_KEY },
+            method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
             body: JSON.stringify(data)
           });
           const json = await res.json();
@@ -143,7 +142,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!B44_API_KEY) return;
     try {
       const res  = await fetch(`${B44_ENTITIES}/UserProfile?filters=${encodeURIComponent(JSON.stringify({ user_id: USER_ID }))}&limit=1`, {
-        headers: { "api-key": B44_API_KEY }
+        headers: { "Authorization": `Bearer ${B44_API_KEY}` }
       });
       const json = await res.json();
       const row  = (json.results || json)[0];
@@ -220,7 +219,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Store subscription in Base44
     await fetch(`${B44_ENTITIES}/PushSubscription`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "api-key": B44_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
       body: JSON.stringify({ user_id: USER_ID, endpoint: sub.endpoint, p256dh, auth, last_active: new Date().toISOString() })
     }).catch(() => {});
   }
@@ -229,7 +228,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!B44_API_KEY) return;
     fetch(B44_PUSH_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "api-key": B44_API_KEY },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${B44_API_KEY}` },
       body: JSON.stringify({ user_id: USER_ID, message, title: "MIA 💜" })
     }).catch(() => {});
   }
@@ -1654,7 +1653,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "api-key": B44_API_KEY
+        "Authorization": `Bearer ${B44_API_KEY}`
       },
       body: JSON.stringify({ prompt })
     });

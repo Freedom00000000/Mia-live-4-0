@@ -6,22 +6,23 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-const BASE44_API_KEY   = process.env.BASE44_API_KEY   || "";
-const BASE44_SUBDOMAIN = process.env.BASE44_SUBDOMAIN || "";
+const BASE44_API_KEY  = process.env.BASE44_API_KEY || "";
+const BASE44_APP_ID   = process.env.BASE44_APP_ID  || "";
+const BASE44_CHAT_URL = `https://base44.app/api/apps/${BASE44_APP_ID}/functions/chat`;
 
-if (!BASE44_API_KEY || !BASE44_SUBDOMAIN) {
-  console.error("FEJL: BASE44_API_KEY og BASE44_SUBDOMAIN skal være sat i .env");
+if (!BASE44_API_KEY || !BASE44_APP_ID) {
+  console.error("FEJL: BASE44_API_KEY og BASE44_APP_ID skal være sat i .env");
   process.exit(1);
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", ai: "base44", subdomain: BASE44_SUBDOMAIN });
+  res.json({ status: "ok", ai: "base44", app_id: BASE44_APP_ID });
 });
 
 app.post("/api/chat", async (req, res) => {
-  const { messages = [], systemPrompt } = req.body;
+  const { messages = [], systemPrompt, temperature = 0.95 } = req.body;
 
   const sys = systemPrompt || "";
   if (!sys) return res.status(400).json({ text: "systemPrompt mangler." });
@@ -35,17 +36,14 @@ app.post("/api/chat", async (req, res) => {
     return res.status(400).json({ text: "Ingen besked modtaget." });
   }
 
-  const history = apiMessages
-    .map(m => `${m.role === "assistant" ? "MIA" : "Bruger"}: ${m.content}`)
-    .join("\n");
-
-  const fullPrompt = `${sys}\n\nSamtalehistorik:\n${history}\n\nMIA:`;
-
   try {
-    const b44res = await fetch(`https://${BASE44_SUBDOMAIN}.base44.app/api/functions/invoke-llm`, {
+    const b44res = await fetch(BASE44_CHAT_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "api-key": BASE44_API_KEY },
-      body: JSON.stringify({ prompt: fullPrompt, model: "gpt-4o", response_type: "text" })
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${BASE44_API_KEY}`
+      },
+      body: JSON.stringify({ messages: apiMessages, systemPrompt: sys, temperature })
     });
 
     if (!b44res.ok) {
@@ -55,7 +53,7 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const data = await b44res.json();
-    const text = (data.result || data.text || "").trim();
+    const text = (data.response || data.text || data.result || "").trim();
     if (!text) return res.status(502).json({ text: "Base44 returnerede tomt svar." });
 
     return res.json({ text, provider: "base44" });
@@ -67,6 +65,5 @@ app.post("/api/chat", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  const ai = BASE44_API_KEY && BASE44_SUBDOMAIN ? "Base44" : GROQ_API_KEY ? "Groq" : "Pollinations";
-  console.log(`MIA kører på http://localhost:${PORT} (AI: ${ai})`);
+  console.log(`MIA kører på http://localhost:${PORT} (Base44 app: ${BASE44_APP_ID})`);
 });

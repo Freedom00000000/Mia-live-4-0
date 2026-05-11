@@ -94,9 +94,6 @@ app.post("/api/chat", async (req, res) => {
   if (!apiMessages.length || apiMessages[apiMessages.length - 1].role !== "user") {
     return res.status(400).json({ text: "Ingen besked modtaget." });
   }
-  if (!groq) {
-    return res.status(503).json({ text: "Groq ikke konfigureret." });
-  }
 
   // Prøv Base44 → Groq → Pollinations i rækkefølge
   const providers = [

@@ -1463,28 +1463,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44(messages, systemPrompt, temperature = 0.95) {
-    if (!B44_API_KEY) {
-      const ok = await promptForB44Key();
-      if (!ok) throw new Error("Ingen API-nøgle");
-    }
-    const res = await fetch(B44_ENDPOINT, {
+    const res = await fetch("/api/chat", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": B44_API_KEY
-      },
-      body: JSON.stringify({ messages, systemPrompt, temperature, nsfw: true, safeSearch: false, noFilter: true, safe_mode: false, content_filter: "none", moderation: false, vision: true, tools: true, max_tokens: 4096 })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages, systemPrompt, temperature })
     });
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        B44_API_KEY = "";
-        localStorage.removeItem(B44_KEY_STORAGE);
-        updateKeyBar();
-      }
-      throw new Error(`Base44 ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`chat ${res.status}`);
     const data = await res.json();
-    return (data.response || "").trim();
+    return (data.text || "").trim();
   }
 
   // Every 15 messages, compress recent context into a summary MIA can reference

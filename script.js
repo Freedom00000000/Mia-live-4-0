@@ -1,6 +1,6 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
-const B44_APP_ID         = "69f8dd2a6d51679ed4906dd2";
+const B44_APP_ID         = "69bb00905d52526b11e124a6";
 const B44_DEFAULT_KEY    = "8ace719fbbf34327bf590e03506f5bfe";
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 
@@ -1353,14 +1353,25 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44(messages, systemPrompt, temperature = 0.95) {
-    const res = await fetch(`https://base44.app/api/apps/${B44_APP_ID}/functions/chat`, {
+    const headers = { "Content-Type": "application/json", "api-key": B44_API_KEY };
+
+    // Try /functions/chat first (messages format)
+    let res = await fetch(`https://base44.app/api/apps/${B44_APP_ID}/functions/chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${B44_API_KEY}`
-      },
+      headers,
       body: JSON.stringify({ messages, systemPrompt, temperature, max_tokens: 4096 })
     });
+
+    // Fallback to invoke-llm (prompt string format)
+    if (!res.ok && res.status === 404) {
+      const history = messages.map(m => `${m.role === "assistant" ? "MIA" : "Bruger"}: ${m.content}`).join("\n");
+      res = await fetch(`https://base44.app/api/apps/${B44_APP_ID}/functions/invoke-llm`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ prompt: `${systemPrompt}\n\n${history}\n\nMIA:`, model: "gpt-4o", response_type: "text" })
+      });
+    }
+
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
         B44_API_KEY = "";

@@ -1,6 +1,6 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
-const B44_APP_ID         = "69bb00905d52526b11e124a6";
+const B44_APP_ID         = "69f8dd2a6d51679ed4906dd2";
 const B44_DEFAULT_KEY    = "8ace719fbbf34327bf590e03506f5bfe";
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 

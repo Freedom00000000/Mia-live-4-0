@@ -1463,7 +1463,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
   // Every 30 messages, compress recent context into a summary MIA can reference
   async function maybeUpdateSummary() {
     if (profile.messageCount % 30 !== 0 || profile.messageCount === 0) return;
-    const recent = apiMessages.slice(-20).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
+    const recent = apiMessages.slice(-60).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
     try {
       const summary = await fetchBase44(
         [{ role: "user", content: recent }],
@@ -1501,7 +1501,13 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
 
       reply = cleanReply(reply);
 
-      if (hasAILeak(reply)) return getLocalResponse(userMessage);
+      if (hasAILeak(reply)) {
+        const fallback = getLocalResponse(userMessage);
+        lastMiaReply = fallback;
+        apiMessages.push({ role: "assistant", content: fallback });
+        saveApiCtx();
+        return fallback;
+      }
 
       lastMiaReply = reply;
       apiMessages.push({ role: "assistant", content: reply });
@@ -1904,7 +1910,7 @@ Brug ||| til naturlige pauser. Max 3 korte dele. Ingen forklaring, bare beskeden
   // MIA reflects on recent conversations and develops opinions + next topics
   async function reflectAndDevelop() {
     if (apiMessages.length < 6) return;
-    const recent = apiMessages.slice(-16)
+    const recent = apiMessages.slice(-32)
       .map(m => `${m.role === "user" ? n() : "MIA"}: ${typeof m.content === "string" ? m.content : "[billede]"}`)
       .join("\n");
 

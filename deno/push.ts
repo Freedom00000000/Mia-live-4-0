@@ -7,7 +7,7 @@ import { createClientFromRequest } from "npm:@base44/sdk@0.8.25";
 const VAPID_PUBLIC  = "zcBVudmCzHM-YOIAotsUs8zN3zdb1JyuUB7aCHrsFozKelusJoEOrnY2m2hRx51mHVGW4Gh30bEgG8UkdNv4YQ";
 const VAPID_PRIVATE = "JY3dLnV17jY-4ZTW49EDgZ45pOPm-h_tT0aoHIk5u4o";
 const VAPID_SUBJECT = "mailto:mia@freedom.dk";
-const B44_APP_ID    = "69f8dd2a6d51679ed4906dd2";
+const B44_APP_ID    = "69bb00905d52526b11e124a6";
 
 // ── VAPID JWT signing ─────────────────────────────────────────────────────────
 

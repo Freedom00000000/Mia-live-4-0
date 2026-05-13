@@ -1446,7 +1446,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
         "Content-Type": "application/json",
         "api-key": B44_API_KEY
       },
-      body: JSON.stringify({ prompt, model: "claude_sonnet_4_6", response_type: "text" })
+      body: JSON.stringify({ prompt, model: "gpt_5_5", response_type: "text" })
     });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {

@@ -1373,7 +1373,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       throw new Error(`Base44 ${res.status}`);
     }
     const data = await res.json();
-    return (data.response || data.text || data.result || "").trim();
+    return (typeof data === "string" ? data : (data.response || data.text || data.result || "")).trim();
   }
 
   // Every 15 messages, compress recent context into a summary MIA can reference

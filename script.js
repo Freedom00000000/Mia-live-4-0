@@ -1,7 +1,7 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
 const B44_DEFAULT_KEY    = "8ace719fbbf34327bf590e03506f5bfe";
-const B44_DENO_ENDPOINT  = "https://mia-image-backend.deno.dev";
+const B44_APP_ID         = "69bb00905d52526b11e124a6";
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 
 // ── VAPID public key (Web Push) ───────────────────────────────────────────────
@@ -1353,12 +1353,21 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44(messages, systemPrompt, temperature = 0.95) {
-    const res = await fetch(`${B44_DENO_ENDPOINT}/chat`, {
+    const res = await fetch(`https://base44.app/api/apps/${B44_APP_ID}/functions/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "api-key": B44_API_KEY },
-      body: JSON.stringify({ messages, systemPrompt, temperature })
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${B44_API_KEY}`
+      },
+      body: JSON.stringify({ messages, systemPrompt, temperature, max_tokens: 4096 })
     });
-    if (!res.ok) throw new Error(`Base44 ${res.status}`);
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        B44_API_KEY = "";
+        localStorage.removeItem(B44_KEY_STORAGE);
+      }
+      throw new Error(`Base44 ${res.status}`);
+    }
     const data = await res.json();
     return (data.response || data.text || data.result || "").trim();
   }
@@ -1537,7 +1546,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       .trim() || msg;
   }
 
-  const B44_IMAGE_ENDPOINT = `https://${B44_SUBDOMAIN}.base44.app/api/functions/generateImage`;
+  const B44_IMAGE_ENDPOINT = `https://base44.app/api/apps/${B44_APP_ID}/functions/generateImage`;
 
   async function fetchBase44Image(prompt) {
     const res = await fetch(B44_IMAGE_ENDPOINT, {

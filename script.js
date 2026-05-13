@@ -1367,8 +1367,8 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
     });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
-        B44_API_KEY = "";
-        localStorage.removeItem(B44_KEY_STORAGE);
+        B44_API_KEY = B44_DEFAULT_KEY;
+        localStorage.setItem(B44_KEY_STORAGE, B44_DEFAULT_KEY);
       }
       throw new Error(`Base44 ${res.status}`);
     }

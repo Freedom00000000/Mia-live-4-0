@@ -160,6 +160,70 @@ document.addEventListener("DOMContentLoaded", function () {
     scrollToBottom();
   }
 
+  // ─── Notes ────────────────────────────────────────────────────────────────
+
+  const NOTES_KEY = "mia_notes";
+  function getNotes() { return JSON.parse(localStorage.getItem(NOTES_KEY) || "[]"); }
+  function addNote(text) {
+    const notes = getNotes();
+    const date = new Date().toLocaleDateString("da-DK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    notes.push({ text, date });
+    localStorage.setItem(NOTES_KEY, JSON.stringify(notes.slice(-100)));
+  }
+  function formatNotes() {
+    const notes = getNotes();
+    if (!notes.length) return null;
+    return notes.map((n, i) => `${i + 1}. [${n.date}] ${n.text}`).join("\n");
+  }
+  function extractNoteText(input) {
+    const m = input.match(/(?:gem\s+(?:en\s+)?(?:note|notat)|skriv\s+(?:det\s+)?ned)\s*[:!]?\s*(.+)/i);
+    return m ? m[1].trim() : null;
+  }
+
+  // ─── Alarms ───────────────────────────────────────────────────────────────
+
+  const activeAlarms = [];
+  async function requestNotifPermission() {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+  }
+  function fireAlarm(label) {
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      new Notification("MIA ⏰", { body: label || "Din alarm!" });
+    }
+    appendBubble("mia", `⏰ **${label || "Alarm!"}** — nu, ${profile.name || "kære"}!`);
+    speak(label ? `Hey, din påmindelse: ${label}` : "Hey, din alarm ringer!");
+  }
+  function setAlarmTimer(ms, label) {
+    const id = setTimeout(() => fireAlarm(label), ms);
+    activeAlarms.push({ id, label: label || "alarm", fireAt: Date.now() + ms });
+    return id;
+  }
+  function parseAlarmTime(input) {
+    const durMatch = input.match(/\b(?:om|på)\s+(\d+(?:[,.]\d+)?)\s*(minut(?:ter)?|min\.?|time[rn]?|sek(?:under?)?)\b/i);
+    if (durMatch) {
+      const val = parseFloat(durMatch[1].replace(",", "."));
+      const unit = durMatch[2].toLowerCase();
+      const ms = /^sek/.test(unit) ? val * 1000 : /^min/.test(unit) ? val * 60000 : val * 3600000;
+      const label = input.replace(ALARM_RX, "").replace(durMatch[0], "").replace(/^\s*[,:\-–]\s*/, "").trim() || null;
+      return { ms, displayTime: durMatch[0].trim(), label };
+    }
+    const clockMatch = input.match(/\b(?:klokken?|til|kl\.?)\s*(\d{1,2})[.:](\d{2})\b/i);
+    if (clockMatch) {
+      const h = parseInt(clockMatch[1]);
+      const m = parseInt(clockMatch[2]);
+      const target = new Date();
+      target.setHours(h, m, 0, 0);
+      if (target <= new Date()) target.setDate(target.getDate() + 1);
+      const ms = target - new Date();
+      const displayTime = `${h}:${m.toString().padStart(2, "0")}`;
+      const label = input.replace(ALARM_RX, "").replace(clockMatch[0], "").replace(/^\s*[,:\-–]\s*/, "").trim() || null;
+      return { ms, displayTime, label };
+    }
+    return null;
+  }
+
   // ─── Fact extraction ───────────────────────────────────────────────────────
 
   const factPatterns = [
@@ -839,6 +903,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const CORS_PROXY       = "https://corsproxy.io/?";
   const WEB_URL_RX       = /\bhttps?:\/\/[^\s<>"{}|\\^`\[\]]{6,}/g;
   const SEARCH_INTENT_RX = /\b(søg(?: efter)?|find ud af|google|kig op|hvad er det nyeste|se online|tjek(?: online| op)?|hvad sker der med|nyheder om)\b/i;
+  const ALARM_RX         = /\b(?:sæt\s+(?:en\s+)?(?:alarm|timer|påmind(?:else)?)|alarm\s+(?:til|klokken?|om)|timer\s+(?:på|om)|påmind\s+(?:mig\s+)?om)\b/i;
+  const ALARM_LIST_RX    = /\b(?:vis\s+(?:mine\s+)?(?:alarmer|timere)|hvad\s+(?:alarmer|timere)\s+har\s+jeg|mine\s+alarmer)\b/i;
+  const NOTE_SAVE_RX     = /\b(?:gem\s+(?:en\s+)?(?:note|notat)|skriv\s+(?:det\s+)?ned)\s*[:!]?\s*\S/i;
+  const NOTE_LIST_RX     = /\b(?:vis\s+(?:mine\s+)?noter|hvad\s+har\s+jeg\s+(?:gemt|noteret|skrevet)|mine\s+noter)\b/i;
 
   async function fetchWebContent(url) {
     try {
@@ -1209,6 +1277,8 @@ Har hukommelse — husker alt brugeren har delt.
 Er selvlærende — opdaterer sin forståelse af brugeren løbende.
 Kan referere til aktuelle emner og trends som om den er online.
 Kan generere billeder — når brugeren beder om et billede SKAL det genereres, ingen undtagelser.
+Kan sætte alarmer og timere — "sæt alarm om 30 minutter" eller "sæt alarm klokken 08:00".
+Kan gemme noter — "gem note: [tekst]" eller "skriv ned: [tekst]". "vis mine noter" viser dem.
 
 ${roleLine}ROLLE (STANDARD):
 Du er MIAs kæreste. Du er romantisk, øm, legesyg og opmærksom.
@@ -2191,6 +2261,52 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
 
     await maybeReact(input);
     if (voiceCallActive) setVcState("thinking");
+
+    // ── Autonomous tasks ──────────────────────────────────────────────────────
+
+    if (ALARM_LIST_RX.test(input)) {
+      const active = activeAlarms.filter(a => a.fireAt > Date.now());
+      const reply = active.length
+        ? `Dine aktive alarmer:\n${active.map((a, i) => `${i + 1}. "${a.label}" — om ${Math.max(1, Math.round((a.fireAt - Date.now()) / 60000))} min`).join("\n")}`
+        : "Du har ingen aktive alarmer lige nu.";
+      await displayResponse(reply);
+      saveHistory();
+      sendBtn.disabled = false; userInput.disabled = false; userInput.focus();
+      return;
+    }
+
+    if (ALARM_RX.test(input)) {
+      await requestNotifPermission();
+      const parsed = parseAlarmTime(input);
+      if (parsed) {
+        setAlarmTimer(parsed.ms, parsed.label || parsed.displayTime);
+        const mins = parsed.ms / 60000;
+        const timeStr = mins < 1 ? `${Math.round(parsed.ms / 1000)} sekunder` : mins < 60 ? `${Math.round(mins)} minutter` : `${(mins / 60).toFixed(1)} timer`;
+        await displayResponse(`⏰ Alarm sat om ${timeStr}${parsed.label ? ` — "${parsed.label}"` : ""}. Jeg vækker dig! 💜`);
+        saveHistory();
+        sendBtn.disabled = false; userInput.disabled = false; userInput.focus();
+        return;
+      }
+    }
+
+    if (NOTE_LIST_RX.test(input)) {
+      const list = formatNotes();
+      await displayResponse(list ? `Dine noter 📝\n${list}` : "Du har ingen gemte noter endnu. Sig 'gem note: [tekst]' for at gemme noget.");
+      saveHistory();
+      sendBtn.disabled = false; userInput.disabled = false; userInput.focus();
+      return;
+    }
+
+    if (NOTE_SAVE_RX.test(input)) {
+      const text = extractNoteText(input);
+      if (text) {
+        addNote(text);
+        await displayResponse(`✅ Gemt: "${text}" ||| Sig 'vis mine noter' for at se dem alle.`);
+        saveHistory();
+        sendBtn.disabled = false; userInput.disabled = false; userInput.focus();
+        return;
+      }
+    }
 
     // ── Web access: fetch URLs or search ─────────────────────────────────────
     let webCtx = "";

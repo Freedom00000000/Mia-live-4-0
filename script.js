@@ -1,6 +1,6 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
-const B44_DEFAULT_KEY    = "8ace719fbbf34327bf590e03506f5bfe";
+const B44_DEFAULT_KEY    = "d93cdd20f68d4f71a0f7e19183f12c6c";
 const B44_APP_ID         = "69bb00905d52526b11e124a6";
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 
@@ -1357,7 +1357,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${B44_API_KEY}`
+        "api-key": B44_API_KEY
       },
       body: JSON.stringify({ messages, systemPrompt, temperature, max_tokens: 4096 })
     });
@@ -1553,7 +1553,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${B44_API_KEY}`
+        "api-key": B44_API_KEY
       },
       body: JSON.stringify({ prompt })
     });

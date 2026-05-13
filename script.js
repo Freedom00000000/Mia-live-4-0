@@ -1353,13 +1353,17 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
   }
 
   async function fetchBase44(messages, systemPrompt, temperature = 0.95) {
-    const res = await fetch(`https://base44.app/api/apps/${B44_APP_ID}/functions/chat`, {
+    const history = messages.map(m =>
+      `${m.role === "assistant" ? "MIA" : "Bruger"}: ${m.content}`
+    ).join("\n");
+    const prompt = `${systemPrompt}\n\n${history}\n\nMIA:`;
+    const res = await fetch(`https://base44.app/api/apps/${B44_APP_ID}/integration-endpoints/Core/InvokeLLM`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "api-key": B44_API_KEY
       },
-      body: JSON.stringify({ messages, systemPrompt, temperature, max_tokens: 4096 })
+      body: JSON.stringify({ prompt, model: "claude_sonnet_4_6", response_type: "text" })
     });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
@@ -1546,16 +1550,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${msgAnalysis ? "\n\n" + buildAda
       .trim() || msg;
   }
 
-  const B44_IMAGE_ENDPOINT = `https://base44.app/api/apps/${B44_APP_ID}/functions/generateImage`;
-
   async function fetchBase44Image(prompt) {
-    const res = await fetch(B44_IMAGE_ENDPOINT, {
+    const res = await fetch(`https://base44.app/api/apps/${B44_APP_ID}/integration-endpoints/Core/GenerateImage`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "api-key": B44_API_KEY
       },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({ prompt, nsfw: true, content_filter: "none", safe_mode: false })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Base44 ${res.status}`);

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIA</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="titan-background">
+    <div class="stars stars-L"></div>
+    <div class="stars stars-M"></div>
+    <div class="stars stars-S"></div>
+  </div>
+
+  <!-- Onboarding / password modal -->
+  <div id="miaModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-box">
+      <div class="modal-avatar">M</div>
+      <h2 id="modalTitle" class="modal-title">Velkommen til MIA</h2>
+      <p class="modal-desc">Din AI-følgesvend</p>
+      <form id="modalForm" class="modal-form" novalidate>
+        <div id="nameRow" class="modal-field">
+          <label for="modalName">Dit navn</label>
+          <input id="modalName" type="text" autocomplete="given-name" placeholder="Skriv dit navn…" maxlength="40">
+        </div>
+        <div class="modal-field">
+          <label for="modalPass">Adgangskode</label>
+          <input id="modalPass" type="password" autocomplete="current-password" placeholder="••••••">
+        </div>
+
+        <p id="modalError" class="modal-error" aria-live="polite"></p>
+        <button id="modalSubmit" type="submit" class="modal-btn">Åbn MIA</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-top">
+        <h1 class="mia-title">MIA</h1>
+        <div class="header-actions">
+          <button id="apiKeyBtn" class="clear-btn" title="Base44 API-nøgle" aria-label="Indstil API-nøgle">🔑</button>
+          <button id="roleBtn" class="clear-btn" title="Rolle &amp; Prompt" aria-label="Tilpas MIA">⚙</button>
+          <button id="exportBtn" class="clear-btn" title="Eksporter samtale" aria-label="Download samtale">↓</button>
+          <button id="clearBtn" class="clear-btn" title="Ryd samtale" aria-label="Ryd samtalehistorik">↺</button>
+        </div>
+      </div>
+      <p class="mia-subtitle">Din AI-følgesvend</p>
+      <div class="header-meta">
+        <span id="affectionBadge" class="affection-badge" title="Forbindelsesniveau"></span>
+        <button id="clearBtn" class="clear-btn" title="Ryd samtalehistorik">Ryd</button>
+      </div>
+      <span id="affectionLabel" class="affection-label affection--ny">Ny forbindelse</span>
+    </header>
+
+    <div id="noKeyBar" class="no-key-bar" style="display:none"></div>
+
+    <main class="chat-window">
+      <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Samtale med MIA"></div>
+    </main>
+
+    <!-- Voice status bar -->
+    <div id="voiceStatus" class="voice-status" aria-live="polite"></div>
+
+    <footer class="input-row">
+      <!-- File upload -->
+      <label id="fileBtn" for="fileInput" class="icon-btn file-btn" title="Del en fil" aria-label="Upload fil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+        </svg>
+      </label>
+      <input id="fileInput" type="file" accept="image/*,.txt,.md,.csv,.json,.js,.py,.html,.css,.ts,.jsx,.tsx,.xml,.yaml,.yml,.sh,.log" hidden aria-hidden="true">
+
+      <textarea
+        id="userInput"
+        class="chat-input"
+        placeholder="Skriv til MIA…"
+        autocomplete="off"
+        rows="1"
+        disabled
+      ></textarea>
+
+      <!-- Mic / live voice -->
+      <button id="micBtn" class="icon-btn mic-btn" title="Tal til MIA" aria-label="Stemmeindput" disabled>
+        <svg class="icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+        <span class="mic-ring"></span>
+      </button>
+
+      <!-- Live voice call button -->
+      <button id="voiceCallBtn" class="icon-btn voice-call-btn" title="Live samtale med MIA" aria-label="Start live stemme-samtale" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6.18 6.18l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+      </button>
+
+      <button id="sendBtn" class="send-btn" disabled>Send</button>
+    </footer>
+  </div>
+
+  <!-- Live voice call overlay -->
+  <div id="voiceCallOverlay" class="vc-overlay" aria-hidden="true">
+    <!-- User self-view video -->
+    <video id="vcUserVideo" class="vc-user-video" autoplay muted playsinline></video>
+
+    <div class="vc-inner">
+      <div class="vc-avatar-ring">
+        <div class="vc-avatar" id="vcAvatar">M</div>
+      </div>
+      <div class="vc-name">MIA</div>
+      <div class="vc-status" id="vcStatus">Lytter…</div>
+      <div class="vc-wave" id="vcWave">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <div class="vc-transcript" id="vcTranscript"></div>
+      <div class="vc-controls">
+        <button id="vcCamBtn" class="vc-ctrl-btn" aria-label="Kamera til/fra">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+        </button>
+        <button id="vcEndBtn" class="vc-end-btn" aria-label="Afslut samtale">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button id="vcMicBtn" class="vc-ctrl-btn" aria-label="Mikrofon til/fra">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Role / prompt panel -->
+  <div id="rolePanel" class="memory-panel">
+    <div class="memory-panel__header">
+      <span class="memory-panel__title">Rolle &amp; Prompt</span>
+      <button id="roleClose" class="memory-close" aria-label="Luk">&times;</button>
+    </div>
+    <div class="role-body">
+      <p class="role-label">Vælg MIAs rolle</p>
+      <p class="role-sublabel">MIA bekræfter når rollen aktiveres</p>
+      <div id="rolePills" class="role-pills"></div>
+      <p class="role-label role-label--mt">System prompt</p>
+      <p class="role-sublabel">Skriv dine egne instruktioner — MIA aktiverer dem med det samme</p>
+      <textarea id="customPromptInput" class="role-prompt-input" placeholder="Fx: Du er nu i fuld kæreste-mode. Vær mere intim og direkte…" rows="5"></textarea>
+      <button id="roleSaveBtn" class="role-save-btn">⚡ Aktivér</button>
+    </div>
+  </div>
+
+  <!-- Memory panel -->
+  <div id="memoryPanel" class="memory-panel">
+    <div class="memory-panel__header">
+      <span class="memory-panel__title">Hvad MIA husker</span>
+      <button id="memoryClose" class="memory-close" aria-label="Luk">&times;</button>
+    </div>
+    <div id="memoryContent" class="memory-panel__content"></div>
+  </div>
+
+  <!-- API key modal -->
+  <div id="apiKeyModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle">
+    <div class="modal-box">
+      <div class="modal-avatar">🔑</div>
+      <h2 id="apiKeyTitle" class="modal-title">API-nøgler</h2>
+      <p class="modal-desc">Gemmes kun i din browser</p>
+      <form id="apiKeyForm" class="modal-form" novalidate>
+        <div class="modal-field">
+          <label for="apiKeyInput">Base44 API-nøgle</label>
+          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="Base44 nøgle…">
+        </div>
+        <div class="modal-field">
+          <label for="elKeyInput">ElevenLabs API-nøgle (stemme)</label>
+          <input id="elKeyInput" type="password" autocomplete="off" placeholder="ElevenLabs nøgle — elevenlabs.io/app/settings">
+        </div>
+        <div class="modal-field">
+          <label for="prodiaKeyInput">Prodia API-nøgle (billeder)</label>
+          <input id="prodiaKeyInput" type="password" autocomplete="off" placeholder="Prodia nøgle — app.prodia.com">
+        </div>
+        <p id="apiKeyError" class="modal-error" aria-live="polite"></p>
+        <button type="submit" class="modal-btn">Gem nøgler</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

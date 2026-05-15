@@ -4,6 +4,11 @@ const B44_DEFAULT_KEY    = "d93cdd20f68d4f71a0f7e19183f12c6c";
 const B44_APP_ID         = "69bb00905d52526b11e124a6";
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 
+// ── Ollama (lokal / gratis) config ───────────────────────────────────────────
+const OLLAMA_PROVIDER_STORAGE = "mia_provider";      // "base44" | "ollama"
+const OLLAMA_URL_STORAGE      = "mia_ollama_url";    // http://localhost:11434
+const OLLAMA_MODEL_STORAGE    = "mia_ollama_model";  // mistral
+
 // ── VAPID public key (Web Push) ───────────────────────────────────────────────
 const VAPID_PUBLIC_KEY = "zcBVudmCzHM-YOIAotsUs8zN3zdb1JyuUB7aCHrsFozKelusJoEOrnY2m2hRx51mHVGW4Gh30bEgG8UkdNv4YQ";
 
@@ -964,7 +969,7 @@ document.addEventListener("DOMContentLoaded", function () {
     async function tryVision(contentFn) {
       const visionMsg = { role: "user", content: contentFn() };
       const msgs = [...apiMessages, visionMsg];
-      const reply = cleanReply(await fetchBase44(msgs, buildSystemPrompt()));
+      const reply = cleanReply(await fetchAI(msgs, buildSystemPrompt()));
       if (hasAILeak(reply)) throw new Error("ai-leak");
       apiMessages.push(visionMsg);
       apiMessages.push({ role: "assistant", content: reply });
@@ -982,7 +987,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const fallbackMsg = { role: "user", content: contextEntry };
         apiMessages.push(fallbackMsg);
         try {
-          const reply = cleanReply(await fetchBase44(apiMessages, buildSystemPrompt()));
+          const reply = cleanReply(await fetchAI(apiMessages, buildSystemPrompt()));
           apiMessages.push({ role: "assistant", content: reply });
           saveApiCtx();
           return reply;
@@ -1014,7 +1019,7 @@ document.addEventListener("DOMContentLoaded", function () {
     async function tryVision(contentFn) {
       const visionMsg = { role: "user", content: contentFn() };
       const msgs = [...apiMessages, visionMsg];
-      const reply = cleanReply(await fetchBase44(msgs, sysPrompt));
+      const reply = cleanReply(await fetchAI(msgs, sysPrompt));
       if (hasAILeak(reply)) throw new Error("ai-leak");
       apiMessages.push(visionMsg);
       apiMessages.push({ role: "assistant", content: reply });
@@ -1387,28 +1392,61 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
 
   function promptForB44Key() {
     return new Promise(resolve => {
-      const modal       = document.getElementById("apiKeyModal");
-      const form        = document.getElementById("apiKeyForm");
-      const input       = document.getElementById("apiKeyInput");
-      const elInput     = document.getElementById("elKeyInput");
-      const prodiaInput = document.getElementById("prodiaKeyInput");
-      const err         = document.getElementById("apiKeyError");
+      const modal          = document.getElementById("apiKeyModal");
+      const form           = document.getElementById("apiKeyForm");
+      const input          = document.getElementById("apiKeyInput");
+      const elInput        = document.getElementById("elKeyInput");
+      const prodiaInput    = document.getElementById("prodiaKeyInput");
+      const providerSelect = document.getElementById("providerSelect");
+      const b44Section     = document.getElementById("b44KeySection");
+      const ollamaSection  = document.getElementById("ollamaSection");
+      const ollamaUrl      = document.getElementById("ollamaUrlInput");
+      const ollamaModel    = document.getElementById("ollamaModelInput");
+      const err            = document.getElementById("apiKeyError");
       if (!modal) { resolve(false); return; }
-      if (input)      input.value      = B44_API_KEY;
-      if (elInput)    elInput.value    = EL_API_KEY;
-      if (prodiaInput) prodiaInput.value = PRODIA_API_KEY;
+
+      const currentProvider = localStorage.getItem(OLLAMA_PROVIDER_STORAGE) || "base44";
+      if (providerSelect) providerSelect.value = currentProvider;
+      if (input)        input.value       = B44_API_KEY;
+      if (elInput)      elInput.value     = EL_API_KEY;
+      if (prodiaInput)  prodiaInput.value = PRODIA_API_KEY;
+      if (ollamaUrl)    ollamaUrl.value   = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
+      if (ollamaModel)  ollamaModel.value = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "mistral";
+
+      function updateProviderSections() {
+        const isOllama = providerSelect?.value === "ollama";
+        if (b44Section)    b44Section.style.display    = isOllama ? "none" : "";
+        if (ollamaSection) ollamaSection.style.display = isOllama ? ""     : "none";
+      }
+      if (providerSelect) {
+        providerSelect.addEventListener("change", updateProviderSections);
+        updateProviderSections();
+      }
+
       err.textContent = "";
       modal.classList.add("modal--visible");
-      setTimeout(() => input?.focus(), 60);
+      setTimeout(() => (providerSelect?.value === "ollama" ? ollamaUrl : input)?.focus(), 60);
+
       function onSubmit(e) {
         e.preventDefault();
-        const key = input?.value.trim() || "";
-        if (key.length < 16) {
-          err.textContent = "Ugyldig Base44-nøgle — den er for kort";
-          return;
+        const provider = providerSelect?.value || "base44";
+        localStorage.setItem(OLLAMA_PROVIDER_STORAGE, provider);
+
+        if (provider === "ollama") {
+          const url   = ollamaUrl?.value.trim()   || "http://localhost:11434";
+          const model = ollamaModel?.value.trim() || "mistral";
+          localStorage.setItem(OLLAMA_URL_STORAGE,   url);
+          localStorage.setItem(OLLAMA_MODEL_STORAGE, model);
+        } else {
+          const key = input?.value.trim() || "";
+          if (key.length < 16) {
+            err.textContent = "Ugyldig Base44-nøgle — den er for kort";
+            return;
+          }
+          B44_API_KEY = key;
+          localStorage.setItem(B44_KEY_STORAGE, key);
         }
-        B44_API_KEY = key;
-        localStorage.setItem(B44_KEY_STORAGE, key);
+
         const elKey = elInput?.value.trim() || "";
         if (elKey.length >= 8) {
           EL_API_KEY = elKey;
@@ -1421,6 +1459,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
         }
         updateKeyBar();
         modal.classList.remove("modal--visible");
+        if (providerSelect) providerSelect.removeEventListener("change", updateProviderSections);
         form.removeEventListener("submit", onSubmit);
         resolve(true);
       }
@@ -1459,12 +1498,38 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
     return (typeof data === "string" ? data : (data.response || data.text || data.result || "")).trim();
   }
 
+  async function fetchOllama(messages, systemPrompt, temperature = 0.95) {
+    const baseUrl = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
+    const model   = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "mistral";
+    const apiMessages = [
+      { role: "system", content: systemPrompt },
+      ...messages
+        .filter(m => typeof m.content === "string")
+        .map(m => ({ role: m.role, content: m.content }))
+    ];
+    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages: apiMessages, temperature, stream: false })
+    });
+    if (!res.ok) throw new Error(`Ollama ${res.status} — er Ollama startet? (ollama serve)`);
+    const data = await res.json();
+    return (data.choices?.[0]?.message?.content || "").trim();
+  }
+
+  function fetchAI(messages, systemPrompt, temperature = 0.95) {
+    const provider = localStorage.getItem(OLLAMA_PROVIDER_STORAGE) || "base44";
+    return provider === "ollama"
+      ? fetchOllama(messages, systemPrompt, temperature)
+      : fetchBase44(messages, systemPrompt, temperature);
+  }
+
   // Every 15 messages, compress recent context into a summary MIA can reference
   async function maybeUpdateSummary() {
     if (profile.messageCount % 15 !== 0 || profile.messageCount === 0) return;
     const recent = apiMessages.slice(-60).map(m => `${m.role === "user" ? "dem" : "Mia"}: ${m.content}`).join("\n");
     try {
-      const summary = await fetchBase44(
+      const summary = await fetchAI(
         [{ role: "user", content: recent }],
         "Opsummer denne samtale i 3-5 korte sætninger på dansk: hvad talte de om, hvad lærte Mia om personen, hvad var stemningen. Vær konkret og faktuel.",
         0.3
@@ -1492,10 +1557,10 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
     try {
       let reply;
       try {
-        reply = await fetchBase44(apiMessages, sysPrompt);
+        reply = await fetchAI(apiMessages, sysPrompt);
       } catch (_) {
         await new Promise(r => setTimeout(r, 1400));
-        reply = await fetchBase44(apiMessages, sysPrompt);
+        reply = await fetchAI(apiMessages, sysPrompt);
       }
 
       reply = cleanReply(reply);
@@ -1511,7 +1576,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
           { role: "user", content: repairInstruction }
         ];
         try {
-          reply = cleanReply(await fetchBase44(repairMsgs, sysPrompt, 1.0));
+          reply = cleanReply(await fetchAI(repairMsgs, sysPrompt, 1.0));
         } catch (_) {
           return getLocalResponse(userMessage);
         }
@@ -1526,7 +1591,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
           { role: "user", content: "du gentog dig selv. svar anderledes – noget nyt, specifikt, ikke det du sagde sidst." }
         ];
         try {
-          reply = cleanReply(await fetchBase44(breakMsgs, sysPrompt, 1.1));
+          reply = cleanReply(await fetchAI(breakMsgs, sysPrompt, 1.1));
           if (hasAILeak(reply)) return getLocalResponse(userMessage);
         } catch (_) {}
       }
@@ -1918,7 +1983,7 @@ Det kan være: en tanke du ikke kan slippe, noget der skete i dag, et spørgsmå
 Brug ||| til naturlige pauser. Max 3 korte dele. Ingen forklaring, bare beskeden.`;
 
     try {
-      const raw = cleanReply(await fetchBase44(
+      const raw = cleanReply(await fetchAI(
         [{ role: "user", content: "hvad tænker du på?" }],
         sys, 1.08
       ));
@@ -1941,7 +2006,7 @@ Identificer: nye ting du lærte om ${profile.name || "personen"}, en mening du h
 JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
 
     try {
-      const raw  = await fetchBase44([{ role: "user", content: recent }], reflectSys, 0.5);
+      const raw  = await fetchAI([{ role: "user", content: recent }], reflectSys, 0.5);
       const json = JSON.parse(raw.match(/\{[\s\S]*?\}/)?.[0] || "null");
       if (!json) return;
 
@@ -2155,7 +2220,7 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
       appendTyping();
       try {
         const confirmMsgs = [...apiMessages, { role: "user", content: confirmMsg }];
-        const reply = cleanReply(await fetchBase44(confirmMsgs, confirmSys, 0.95));
+        const reply = cleanReply(await fetchAI(confirmMsgs, confirmSys, 0.95));
         apiMessages.push({ role: "assistant", content: reply });
         saveApiCtx();
         await displayResponse(reply);

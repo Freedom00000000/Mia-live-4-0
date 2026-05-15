@@ -6,19 +6,22 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
+const AI_PROVIDER     = process.env.AI_PROVIDER || "base44";
 const BASE44_API_KEY  = process.env.BASE44_API_KEY || "";
 const BASE44_APP_ID   = process.env.BASE44_APP_ID  || "";
 const BASE44_CHAT_URL = `https://base44.app/api/apps/${BASE44_APP_ID}/functions/chat`;
+const OLLAMA_URL      = process.env.OLLAMA_URL   || "http://localhost:11434";
+const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "mistral";
 
-if (!BASE44_API_KEY || !BASE44_APP_ID) {
-  console.error("FEJL: BASE44_API_KEY og BASE44_APP_ID skal være sat i .env");
+if (AI_PROVIDER === "base44" && (!BASE44_API_KEY || !BASE44_APP_ID)) {
+  console.error("FEJL: BASE44_API_KEY og BASE44_APP_ID skal være sat i .env (eller sæt AI_PROVIDER=ollama)");
   process.exit(1);
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", ai: "base44", app_id: BASE44_APP_ID });
+  res.json({ status: "ok", ai: AI_PROVIDER, model: AI_PROVIDER === "ollama" ? OLLAMA_MODEL : "gpt_5_5" });
 });
 
 app.post("/api/chat", async (req, res) => {
@@ -36,7 +39,28 @@ app.post("/api/chat", async (req, res) => {
     return res.status(400).json({ text: "Ingen besked modtaget." });
   }
 
+  const provider = req.body.provider || AI_PROVIDER;
+
   try {
+    if (provider === "ollama") {
+      const ollamaMessages = [{ role: "system", content: sys }, ...apiMessages];
+      const ollamaRes = await fetch(`${OLLAMA_URL}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: OLLAMA_MODEL, messages: ollamaMessages, temperature, stream: false })
+      });
+      if (!ollamaRes.ok) {
+        const body = await ollamaRes.text();
+        console.error(`[Ollama] ${ollamaRes.status}: ${body}`);
+        return res.status(502).json({ text: `Ollama svarede ikke (${ollamaRes.status}). Er 'ollama serve' kørt?` });
+      }
+      const data = await ollamaRes.json();
+      const text = (data.choices?.[0]?.message?.content || "").trim();
+      if (!text) return res.status(502).json({ text: "Ollama returnerede tomt svar." });
+      return res.json({ text, provider: "ollama", model: OLLAMA_MODEL });
+    }
+
+    // Base44
     const b44res = await fetch(BASE44_CHAT_URL, {
       method: "POST",
       headers: {
@@ -58,12 +82,12 @@ app.post("/api/chat", async (req, res) => {
 
     return res.json({ text, provider: "base44" });
   } catch (err) {
-    console.error(`[Base44] fejl: ${err.message}`);
-    return res.status(500).json({ text: "Kunne ikke nå Base44. Tjek forbindelsen." });
+    console.error(`[${provider}] fejl: ${err.message}`);
+    return res.status(500).json({ text: `Kunne ikke nå ${provider}. ${provider === "ollama" ? "Tjek at 'ollama serve' kører." : "Tjek forbindelsen."}` });
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`MIA kører på http://localhost:${PORT} (Base44 app: ${BASE44_APP_ID})`);
+  console.log(`MIA kører på http://localhost:${PORT} (AI: ${AI_PROVIDER}${AI_PROVIDER === "ollama" ? ` / ${OLLAMA_MODEL}` : ""})`);
 });

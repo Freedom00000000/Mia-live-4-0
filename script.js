@@ -1413,15 +1413,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
       if (ollamaUrl)    ollamaUrl.value   = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
       if (ollamaModel)  ollamaModel.value = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "mistral";
 
-      function updateProviderSections() {
-        const isOllama = providerSelect?.value === "ollama";
-        if (b44Section)    b44Section.style.display    = isOllama ? "none" : "";
-        if (ollamaSection) ollamaSection.style.display = isOllama ? ""     : "none";
-      }
-      if (providerSelect) {
-        providerSelect.addEventListener("change", updateProviderSections);
-        updateProviderSections();
-      }
+      syncProviderSections();
 
       err.textContent = "";
       modal.classList.add("modal--visible");
@@ -1459,13 +1451,24 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
         }
         updateKeyBar();
         modal.classList.remove("modal--visible");
-        if (providerSelect) providerSelect.removeEventListener("change", updateProviderSections);
         form.removeEventListener("submit", onSubmit);
         resolve(true);
       }
       form.addEventListener("submit", onSubmit);
     });
   }
+
+  function syncProviderSections() {
+    const sel     = document.getElementById("providerSelect");
+    const b44     = document.getElementById("b44KeySection");
+    const ollama  = document.getElementById("ollamaSection");
+    const isOllama = sel?.value === "ollama";
+    if (b44)    b44.style.display    = isOllama ? "none" : "";
+    if (ollama) ollama.style.display = isOllama ? ""     : "none";
+  }
+
+  const providerSelectEl = document.getElementById("providerSelect");
+  if (providerSelectEl) providerSelectEl.addEventListener("change", syncProviderSections);
 
   const apiKeyBtn = document.getElementById("apiKeyBtn");
   if (apiKeyBtn) {
@@ -1507,10 +1510,11 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
         .filter(m => typeof m.content === "string")
         .map(m => ({ role: m.role, content: m.content }))
     ];
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages: apiMessages, temperature, stream: false })
+      body: JSON.stringify({ model, messages: apiMessages, temperature, stream: false }),
+      signal: AbortSignal.timeout(30000)
     });
     if (!res.ok) throw new Error(`Ollama ${res.status} — er Ollama startet? (ollama serve)`);
     const data = await res.json();

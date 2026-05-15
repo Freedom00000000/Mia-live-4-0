@@ -44,7 +44,7 @@ app.post("/api/chat", async (req, res) => {
   try {
     if (provider === "ollama") {
       const ollamaMessages = [{ role: "system", content: sys }, ...apiMessages];
-      const ollamaRes = await fetch(`${OLLAMA_URL}/v1/chat/completions`, {
+      const ollamaRes = await fetch(`${OLLAMA_URL.replace(/\/+$/, "")}/v1/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: OLLAMA_MODEL, messages: ollamaMessages, temperature, stream: false })

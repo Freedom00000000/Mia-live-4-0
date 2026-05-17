@@ -176,31 +176,11 @@
       <h2 id="apiKeyTitle" class="modal-title">AI-indstillinger</h2>
       <p class="modal-desc">Gemmes kun i din browser</p>
       <form id="apiKeyForm" class="modal-form" novalidate>
-        <div class="modal-field">
-          <label for="providerSelect">AI-udbyder</label>
-          <select id="providerSelect" style="width:100%;padding:0.55rem 0.75rem;border-radius:0.5rem;border:1px solid #555;background:#1e1e2e;color:#cdd6f4;font-size:0.95rem;">
-            <option value="base44">Base44 (online, kræver nøgle)</option>
-            <option value="ollama">Ollama — lokal &amp; gratis (Mistral m.fl.)</option>
-          </select>
-        </div>
         <div id="b44KeySection">
           <div class="modal-field">
             <label for="apiKeyInput">Base44 API-nøgle</label>
             <input id="apiKeyInput" type="password" autocomplete="off" placeholder="Base44 nøgle…">
           </div>
-        </div>
-        <div id="ollamaSection" style="display:none">
-          <div class="modal-field">
-            <label for="ollamaUrlInput">Ollama URL</label>
-            <input id="ollamaUrlInput" type="text" autocomplete="off" placeholder="http://localhost:11434">
-          </div>
-          <div class="modal-field">
-            <label for="ollamaModelInput">Model</label>
-            <input id="ollamaModelInput" type="text" autocomplete="off" placeholder="mistral">
-          </div>
-          <p style="font-size:0.8rem;color:#a6adc8;margin:0 0 0.5rem">
-            Kør <code>ollama serve</code> og <code>ollama pull mistral</code> i terminalen for at starte.
-          </p>
         </div>
         <div class="modal-field">
           <label for="elKeyInput">ElevenLabs API-nøgle (stemme)</label>

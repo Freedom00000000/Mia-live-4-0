@@ -7,7 +7,7 @@ const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 // ── Ollama (lokal / gratis) config ───────────────────────────────────────────
 const OLLAMA_PROVIDER_STORAGE = "mia_provider";      // "base44" | "ollama"
 const OLLAMA_URL_STORAGE      = "mia_ollama_url";    // http://localhost:11434
-const OLLAMA_MODEL_STORAGE    = "mia_ollama_model";  // mistral
+const OLLAMA_MODEL_STORAGE    = "mia_ollama_model";  // llama3
 
 // ── VAPID public key (Web Push) ───────────────────────────────────────────────
 const VAPID_PUBLIC_KEY = "zcBVudmCzHM-YOIAotsUs8zN3zdb1JyuUB7aCHrsFozKelusJoEOrnY2m2hRx51mHVGW4Gh30bEgG8UkdNv4YQ";
@@ -1411,7 +1411,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
       if (elInput)      elInput.value     = EL_API_KEY;
       if (prodiaInput)  prodiaInput.value = PRODIA_API_KEY;
       if (ollamaUrl)    ollamaUrl.value   = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
-      if (ollamaModel)  ollamaModel.value = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "mistral";
+      if (ollamaModel)  ollamaModel.value = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "llama3";
 
       syncProviderSections();
 
@@ -1503,7 +1503,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
 
   async function fetchOllama(messages, systemPrompt, temperature = 0.95) {
     const baseUrl = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
-    const model   = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "mistral";
+    const model   = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "llama3";
     const apiMessages = [
       { role: "system", content: systemPrompt },
       ...messages

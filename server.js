@@ -11,7 +11,7 @@ const BASE44_API_KEY  = process.env.BASE44_API_KEY || "";
 const BASE44_APP_ID   = process.env.BASE44_APP_ID  || "";
 const BASE44_CHAT_URL = `https://base44.app/api/apps/${BASE44_APP_ID}/functions/chat`;
 const OLLAMA_URL      = process.env.OLLAMA_URL   || "http://localhost:11434";
-const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "mistral";
+const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3";
 
 if (AI_PROVIDER === "base44" && (!BASE44_API_KEY || !BASE44_APP_ID)) {
   console.error("FEJL: BASE44_API_KEY og BASE44_APP_ID skal være sat i .env (eller sæt AI_PROVIDER=ollama)");

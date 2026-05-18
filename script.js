@@ -1,13 +1,11 @@
+// ── AI-udbyder config ────────────────────────────────────────────────────────
+const PROVIDER_STORAGE   = "mia_provider"; // "base44" | "claude"
+
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
 const B44_DEFAULT_KEY    = "d93cdd20f68d4f71a0f7e19183f12c6c";
 const B44_APP_ID         = "69bb00905d52526b11e124a6";
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
-
-// ── Ollama (lokal / gratis) config ───────────────────────────────────────────
-const OLLAMA_PROVIDER_STORAGE = "mia_provider";      // "base44" | "ollama"
-const OLLAMA_URL_STORAGE      = "mia_ollama_url";    // http://localhost:11434
-const OLLAMA_MODEL_STORAGE    = "mia_ollama_model";  // llama3
 
 // ── VAPID public key (Web Push) ───────────────────────────────────────────────
 const VAPID_PUBLIC_KEY = "zcBVudmCzHM-YOIAotsUs8zN3zdb1JyuUB7aCHrsFozKelusJoEOrnY2m2hRx51mHVGW4Gh30bEgG8UkdNv4YQ";
@@ -1390,46 +1388,46 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
 
   const CODE_RX = /kode|code|program|javascript|python|html|css|funktion|fejl|bug|script|algoritme|database|sql|api|json|react|node|deploy|github|terminal|kommando/i;
 
+  function syncProviderSections() {
+    const sel      = document.getElementById("providerSelect");
+    const b44      = document.getElementById("b44KeySection");
+    const claude   = document.getElementById("claudeSection");
+    const isClaude = sel?.value === "claude";
+    if (b44)    b44.style.display    = isClaude ? "none" : "";
+    if (claude) claude.style.display = isClaude ? ""     : "none";
+  }
+
+  const providerSelectEl = document.getElementById("providerSelect");
+  if (providerSelectEl) providerSelectEl.addEventListener("change", syncProviderSections);
+
   function promptForB44Key() {
     return new Promise(resolve => {
       const modal          = document.getElementById("apiKeyModal");
       const form           = document.getElementById("apiKeyForm");
+      const providerSelect = document.getElementById("providerSelect");
       const input          = document.getElementById("apiKeyInput");
       const elInput        = document.getElementById("elKeyInput");
       const prodiaInput    = document.getElementById("prodiaKeyInput");
-      const providerSelect = document.getElementById("providerSelect");
-      const b44Section     = document.getElementById("b44KeySection");
-      const ollamaSection  = document.getElementById("ollamaSection");
-      const ollamaUrl      = document.getElementById("ollamaUrlInput");
-      const ollamaModel    = document.getElementById("ollamaModelInput");
       const err            = document.getElementById("apiKeyError");
       if (!modal) { resolve(false); return; }
 
-      const currentProvider = localStorage.getItem(OLLAMA_PROVIDER_STORAGE) || "base44";
+      const currentProvider = localStorage.getItem(PROVIDER_STORAGE) || "base44";
       if (providerSelect) providerSelect.value = currentProvider;
       if (input)        input.value       = B44_API_KEY;
       if (elInput)      elInput.value     = EL_API_KEY;
       if (prodiaInput)  prodiaInput.value = PRODIA_API_KEY;
-      if (ollamaUrl)    ollamaUrl.value   = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
-      if (ollamaModel)  ollamaModel.value = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "llama3";
 
       syncProviderSections();
-
       err.textContent = "";
       modal.classList.add("modal--visible");
-      setTimeout(() => (providerSelect?.value === "ollama" ? ollamaUrl : input)?.focus(), 60);
+      setTimeout(() => (providerSelect?.value === "claude" ? document.getElementById("claudeSection") : input)?.focus(), 60);
 
       function onSubmit(e) {
         e.preventDefault();
         const provider = providerSelect?.value || "base44";
-        localStorage.setItem(OLLAMA_PROVIDER_STORAGE, provider);
+        localStorage.setItem(PROVIDER_STORAGE, provider);
 
-        if (provider === "ollama") {
-          const url   = ollamaUrl?.value.trim()   || "http://localhost:11434";
-          const model = ollamaModel?.value.trim() || "mistral";
-          localStorage.setItem(OLLAMA_URL_STORAGE,   url);
-          localStorage.setItem(OLLAMA_MODEL_STORAGE, model);
-        } else {
+        if (provider !== "claude") {
           const key = input?.value.trim() || "";
           if (key.length < 16) {
             err.textContent = "Ugyldig Base44-nøgle — den er for kort";
@@ -1458,18 +1456,6 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
     });
   }
 
-  function syncProviderSections() {
-    const sel     = document.getElementById("providerSelect");
-    const b44     = document.getElementById("b44KeySection");
-    const ollama  = document.getElementById("ollamaSection");
-    const isOllama = sel?.value === "ollama";
-    if (b44)    b44.style.display    = isOllama ? "none" : "";
-    if (ollama) ollama.style.display = isOllama ? ""     : "none";
-  }
-
-  const providerSelectEl = document.getElementById("providerSelect");
-  if (providerSelectEl) providerSelectEl.addEventListener("change", syncProviderSections);
-
   const apiKeyBtn = document.getElementById("apiKeyBtn");
   if (apiKeyBtn) {
     apiKeyBtn.addEventListener("click", async () => {
@@ -1488,7 +1474,7 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
         "Content-Type": "application/json",
         "api-key": B44_API_KEY
       },
-      body: JSON.stringify({ prompt, model: "gpt_5_5", response_type: "text" })
+      body: JSON.stringify({ prompt, model: "gpt_5_5", response_type: "text", temperature })
     });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
@@ -1501,30 +1487,25 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
     return (typeof data === "string" ? data : (data.response || data.text || data.result || "")).trim();
   }
 
-  async function fetchOllama(messages, systemPrompt, temperature = 0.95) {
-    const baseUrl = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
-    const model   = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "llama3";
-    const apiMessages = [
-      { role: "system", content: systemPrompt },
-      ...messages
-        .filter(m => typeof m.content === "string")
-        .map(m => ({ role: m.role, content: m.content }))
-    ];
-    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/v1/chat/completions`, {
+  async function fetchClaude(messages, systemPrompt) {
+    const apiMessages = messages
+      .filter(m => typeof m.content === "string")
+      .map(m => ({ role: m.role, content: m.content }));
+    const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages: apiMessages, temperature, stream: false }),
-      signal: AbortSignal.timeout(30000)
+      body: JSON.stringify({ messages: apiMessages, systemPrompt, provider: "claude" }),
+      signal: AbortSignal.timeout(60000)
     });
-    if (!res.ok) throw new Error(`Ollama ${res.status} — er Ollama startet? (ollama serve)`);
+    if (!res.ok) throw new Error(`Claude API ${res.status}`);
     const data = await res.json();
-    return (data.choices?.[0]?.message?.content || "").trim();
+    return (data.text || "").trim();
   }
 
   function fetchAI(messages, systemPrompt, temperature = 0.95) {
-    const provider = localStorage.getItem(OLLAMA_PROVIDER_STORAGE) || "base44";
-    return provider === "ollama"
-      ? fetchOllama(messages, systemPrompt, temperature)
+    const provider = localStorage.getItem(PROVIDER_STORAGE) || "base44";
+    return provider === "claude"
+      ? fetchClaude(messages, systemPrompt)
       : fetchBase44(messages, systemPrompt, temperature);
   }
 

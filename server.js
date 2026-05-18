@@ -1,27 +1,34 @@
 require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const express = require("express");
 const path = require("path");
+const Anthropic = require("@anthropic-ai/sdk");
 
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-const AI_PROVIDER     = process.env.AI_PROVIDER || "base44";
 const BASE44_API_KEY  = process.env.BASE44_API_KEY || "";
 const BASE44_APP_ID   = process.env.BASE44_APP_ID  || "";
 const BASE44_CHAT_URL = `https://base44.app/api/apps/${BASE44_APP_ID}/functions/chat`;
-const OLLAMA_URL      = process.env.OLLAMA_URL   || "http://localhost:11434";
-const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3";
+const CLAUDE_API_KEY  = process.env.CLAUDE_API_KEY || "";
 
-if (AI_PROVIDER === "base44" && (!BASE44_API_KEY || !BASE44_APP_ID)) {
-  console.error("FEJL: BASE44_API_KEY og BASE44_APP_ID skal være sat i .env (eller sæt AI_PROVIDER=ollama)");
+const hasBase44 = BASE44_API_KEY && BASE44_APP_ID;
+const hasClaude = !!CLAUDE_API_KEY;
+
+if (!hasBase44 && !hasClaude) {
+  console.error("FEJL: Sæt enten CLAUDE_API_KEY eller BASE44_API_KEY + BASE44_APP_ID i .env");
   process.exit(1);
 }
+
+const anthropic = hasClaude ? new Anthropic.Anthropic({ apiKey: CLAUDE_API_KEY }) : null;
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", ai: AI_PROVIDER, model: AI_PROVIDER === "ollama" ? OLLAMA_MODEL : "gpt_5_5" });
+  res.json({
+    status: "ok",
+    providers: { base44: hasBase44, claude: hasClaude }
+  });
 });
 
 app.post("/api/chat", async (req, res) => {
@@ -39,25 +46,21 @@ app.post("/api/chat", async (req, res) => {
     return res.status(400).json({ text: "Ingen besked modtaget." });
   }
 
-  const provider = req.body.provider || AI_PROVIDER;
+  const provider = req.body.provider || (hasClaude ? "claude" : "base44");
 
   try {
-    if (provider === "ollama") {
-      const ollamaMessages = [{ role: "system", content: sys }, ...apiMessages];
-      const ollamaRes = await fetch(`${OLLAMA_URL.replace(/\/+$/, "")}/v1/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: OLLAMA_MODEL, messages: ollamaMessages, temperature, stream: false })
+    if (provider === "claude") {
+      if (!anthropic) return res.status(503).json({ text: "CLAUDE_API_KEY er ikke sat i .env." });
+      const msg = await anthropic.messages.create({
+        model: "claude-opus-4-7",
+        max_tokens: 8096,
+        thinking: { type: "adaptive" },
+        system: sys,
+        messages: apiMessages,
       });
-      if (!ollamaRes.ok) {
-        const body = await ollamaRes.text();
-        console.error(`[Ollama] ${ollamaRes.status}: ${body}`);
-        return res.status(502).json({ text: `Ollama svarede ikke (${ollamaRes.status}). Er 'ollama serve' kørt?` });
-      }
-      const data = await ollamaRes.json();
-      const text = (data.choices?.[0]?.message?.content || "").trim();
-      if (!text) return res.status(502).json({ text: "Ollama returnerede tomt svar." });
-      return res.json({ text, provider: "ollama", model: OLLAMA_MODEL });
+      const text = msg.content.filter(b => b.type === "text").map(b => b.text).join("").trim();
+      if (!text) return res.status(502).json({ text: "Claude returnerede tomt svar." });
+      return res.json({ text, provider: "claude", model: "claude-opus-4-7" });
     }
 
     // Base44
@@ -83,11 +86,12 @@ app.post("/api/chat", async (req, res) => {
     return res.json({ text, provider: "base44" });
   } catch (err) {
     console.error(`[${provider}] fejl: ${err.message}`);
-    return res.status(500).json({ text: `Kunne ikke nå ${provider}. ${provider === "ollama" ? "Tjek at 'ollama serve' kører." : "Tjek forbindelsen."}` });
+    return res.status(500).json({ text: `Kunne ikke nå ${provider}. Tjek forbindelsen.` });
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`MIA kører på http://localhost:${PORT} (AI: ${AI_PROVIDER}${AI_PROVIDER === "ollama" ? ` / ${OLLAMA_MODEL}` : ""})`);
+  const active = [hasBase44 && "base44", hasClaude && "claude"].filter(Boolean).join(", ");
+  console.log(`MIA kører på http://localhost:${PORT} (AI: ${active})`);
 });

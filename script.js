@@ -1,3 +1,6 @@
+// ── AI-udbyder config ────────────────────────────────────────────────────────
+const PROVIDER_STORAGE   = "mia_provider"; // "base44" | "claude"
+
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
 const B44_DEFAULT_KEY    = "d93cdd20f68d4f71a0f7e19183f12c6c";
@@ -1385,33 +1388,54 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
 
   const CODE_RX = /kode|code|program|javascript|python|html|css|funktion|fejl|bug|script|algoritme|database|sql|api|json|react|node|deploy|github|terminal|kommando/i;
 
+  function syncProviderSections() {
+    const sel      = document.getElementById("providerSelect");
+    const b44      = document.getElementById("b44KeySection");
+    const claude   = document.getElementById("claudeSection");
+    const isClaude = sel?.value === "claude";
+    if (b44)    b44.style.display    = isClaude ? "none" : "";
+    if (claude) claude.style.display = isClaude ? ""     : "none";
+  }
+
+  const providerSelectEl = document.getElementById("providerSelect");
+  if (providerSelectEl) providerSelectEl.addEventListener("change", syncProviderSections);
+
   function promptForB44Key() {
     return new Promise(resolve => {
       const modal          = document.getElementById("apiKeyModal");
       const form           = document.getElementById("apiKeyForm");
+      const providerSelect = document.getElementById("providerSelect");
       const input          = document.getElementById("apiKeyInput");
       const elInput        = document.getElementById("elKeyInput");
       const prodiaInput    = document.getElementById("prodiaKeyInput");
       const err            = document.getElementById("apiKeyError");
       if (!modal) { resolve(false); return; }
 
+      const currentProvider = localStorage.getItem(PROVIDER_STORAGE) || "base44";
+      if (providerSelect) providerSelect.value = currentProvider;
       if (input)        input.value       = B44_API_KEY;
       if (elInput)      elInput.value     = EL_API_KEY;
       if (prodiaInput)  prodiaInput.value = PRODIA_API_KEY;
 
+      syncProviderSections();
       err.textContent = "";
       modal.classList.add("modal--visible");
-      setTimeout(() => input?.focus(), 60);
+      setTimeout(() => (providerSelect?.value === "claude" ? document.getElementById("claudeSection") : input)?.focus(), 60);
 
       function onSubmit(e) {
         e.preventDefault();
-        const key = input?.value.trim() || "";
-        if (key.length < 16) {
-          err.textContent = "Ugyldig Base44-nøgle — den er for kort";
-          return;
+        const provider = providerSelect?.value || "base44";
+        localStorage.setItem(PROVIDER_STORAGE, provider);
+
+        if (provider !== "claude") {
+          const key = input?.value.trim() || "";
+          if (key.length < 16) {
+            err.textContent = "Ugyldig Base44-nøgle — den er for kort";
+            return;
+          }
+          B44_API_KEY = key;
+          localStorage.setItem(B44_KEY_STORAGE, key);
         }
-        B44_API_KEY = key;
-        localStorage.setItem(B44_KEY_STORAGE, key);
 
         const elKey = elInput?.value.trim() || "";
         if (elKey.length >= 8) {
@@ -1463,8 +1487,26 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
     return (typeof data === "string" ? data : (data.response || data.text || data.result || "")).trim();
   }
 
+  async function fetchClaude(messages, systemPrompt) {
+    const apiMessages = messages
+      .filter(m => typeof m.content === "string")
+      .map(m => ({ role: m.role, content: m.content }));
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: apiMessages, systemPrompt, provider: "claude" }),
+      signal: AbortSignal.timeout(60000)
+    });
+    if (!res.ok) throw new Error(`Claude API ${res.status}`);
+    const data = await res.json();
+    return (data.text || "").trim();
+  }
+
   function fetchAI(messages, systemPrompt, temperature = 0.95) {
-    return fetchBase44(messages, systemPrompt, temperature);
+    const provider = localStorage.getItem(PROVIDER_STORAGE) || "base44";
+    return provider === "claude"
+      ? fetchClaude(messages, systemPrompt)
+      : fetchBase44(messages, systemPrompt, temperature);
   }
 
   // Every 15 messages, compress recent context into a summary MIA can reference

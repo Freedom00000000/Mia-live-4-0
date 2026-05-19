@@ -1,3 +1,6 @@
+// ── InstantID auth ───────────────────────────────────────────────────────────
+const IID_SESSION_KEY = "mia_iid_session";
+
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
 const B44_DEFAULT_KEY    = "d93cdd20f68d4f71a0f7e19183f12c6c";
@@ -57,7 +60,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const modalError   = document.getElementById("modalError");
   const nameField    = document.getElementById("modalName");
   const nameRow      = document.getElementById("nameRow");
-  const passField    = document.getElementById("modalPass");
   const affectionEl  = document.getElementById("affectionLabel");
   const appContainer = document.querySelector(".app-container");
   const micBtn       = document.getElementById("micBtn");
@@ -2239,6 +2241,79 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
     });
   }
 
+  // ─── InstantID auth ────────────────────────────────────────────────────────
+
+  const iidModal    = document.getElementById("instantidModal");
+  const iidForm     = document.getElementById("iidForm");
+  const iidEmail    = document.getElementById("iidEmail");
+  const iidPass     = document.getElementById("iidPass");
+  const iidRemember = document.getElementById("iidRemember");
+  const iidError    = document.getElementById("iidError");
+  const iidSubmit   = document.getElementById("iidSubmit");
+
+  function getIIDSession() {
+    return localStorage.getItem(IID_SESSION_KEY) || sessionStorage.getItem(IID_SESSION_KEY);
+  }
+
+  function setIIDSession(email, remember) {
+    const store = remember ? localStorage : sessionStorage;
+    store.setItem(IID_SESSION_KEY, JSON.stringify({ email, ts: Date.now() }));
+  }
+
+  function clearIIDSession() {
+    localStorage.removeItem(IID_SESSION_KEY);
+    sessionStorage.removeItem(IID_SESSION_KEY);
+  }
+
+  function showIIDModal() {
+    iidModal.classList.add("modal--visible");
+    setTimeout(() => iidEmail.focus(), 60);
+  }
+
+  function hideIIDModal() {
+    iidModal.classList.remove("modal--visible");
+  }
+
+  iidForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    iidError.textContent = "";
+    const email    = iidEmail.value.trim();
+    const password = iidPass.value;
+    const remember = iidRemember.checked;
+
+    if (!email || !password) {
+      iidError.textContent = "Udfyld email og adgangskode.";
+      return;
+    }
+
+    iidSubmit.disabled = true;
+    iidSubmit.textContent = "Logger ind…";
+
+    try {
+      const res = await fetch("/api/instantid/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, remember })
+      });
+      const data = await res.json();
+
+      if (data.ok) {
+        setIIDSession(email, remember);
+        hideIIDModal();
+        showModal(!profile.name);
+      } else {
+        iidError.textContent = data.error || "Login mislykkedes. Prøv igen.";
+        iidPass.value = "";
+        iidPass.focus();
+      }
+    } catch (_) {
+      iidError.textContent = "Netværksfejl. Tjek forbindelsen.";
+    }
+
+    iidSubmit.disabled = false;
+    iidSubmit.textContent = "Log ind";
+  });
+
   // ─── Modal ─────────────────────────────────────────────────────────────────
 
   function updateKeyBar() {
@@ -2252,7 +2327,7 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
     const apiKeyRow = document.getElementById("modalApiKeyRow");
     if (apiKeyRow) apiKeyRow.style.display = B44_API_KEY ? "none" : "flex";
     modal.classList.add("modal--visible");
-    setTimeout(() => (isNewUser ? nameField : passField).focus(), 60);
+    setTimeout(() => nameField.focus(), 60);
   }
 
   function hideModal() {
@@ -2262,12 +2337,6 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
   modalForm.addEventListener("submit", e => {
     e.preventDefault();
     modalError.textContent = "";
-    if (passField.value.trim() !== "Mia") {
-      modalError.textContent = "Forkert adgangskode.";
-      passField.value = "";
-      passField.focus();
-      return;
-    }
     if (nameRow.style.display !== "none") {
       const entered = nameField.value.trim();
       if (!entered) { modalError.textContent = "Skriv dit navn."; nameField.focus(); return; }
@@ -2461,5 +2530,10 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
   });
   userInput.disabled = true;
   sendBtn.disabled   = true;
-  showModal(!profile.name);
+
+  if (getIIDSession()) {
+    showModal(!profile.name);
+  } else {
+    showIIDModal();
+  }
 });

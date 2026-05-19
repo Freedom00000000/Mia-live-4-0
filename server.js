@@ -6,6 +6,8 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
+const INSTANTID_BASE_URL = (process.env.INSTANTID_BASE_URL || "https://instantid.info").replace(/\/+$/, "");
+
 const AI_PROVIDER     = process.env.AI_PROVIDER || "base44";
 const BASE44_API_KEY  = process.env.BASE44_API_KEY || "";
 const BASE44_APP_ID   = process.env.BASE44_APP_ID  || "";
@@ -19,6 +21,91 @@ if (AI_PROVIDER === "base44" && (!BASE44_API_KEY || !BASE44_APP_ID)) {
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
+
+// InstantID authentication proxy
+app.post("/api/instantid/login", async (req, res) => {
+  const { email, password, remember } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ ok: false, error: "Email og adgangskode kræves." });
+  }
+
+  try {
+    // Fetch the login page first to get the CSRF token and session cookie
+    const pageRes = await fetch(`${INSTANTID_BASE_URL}/login`, {
+      headers: {
+        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent": "Mozilla/5.0 (compatible; MIA/4.0)"
+      }
+    });
+
+    const html = await pageRes.text();
+    const rawCookies = pageRes.headers.getSetCookie ? pageRes.headers.getSetCookie() : [];
+    const cookieHeader = rawCookies.map(c => c.split(";")[0]).join("; ");
+
+    // Extract Laravel CSRF token from meta tag or hidden input
+    const csrfMatch = html.match(/name="_token"\s+value="([^"]+)"/) ||
+                      html.match(/<meta\s+name="csrf-token"\s+content="([^"]+)"/);
+    const csrfToken = csrfMatch ? csrfMatch[1] : "";
+
+    // Submit login form
+    const loginRes = await fetch(`${INSTANTID_BASE_URL}/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json, text/html, */*",
+        "Cookie": cookieHeader,
+        "Referer": `${INSTANTID_BASE_URL}/login`,
+        "User-Agent": "Mozilla/5.0 (compatible; MIA/4.0)",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: new URLSearchParams({
+        email,
+        password,
+        _token: csrfToken,
+        ...(remember ? { remember: "on" } : {})
+      }).toString(),
+      redirect: "manual"
+    });
+
+    const status = loginRes.status;
+
+    // Successful login usually redirects away from /login
+    if (status === 302 || status === 301 || status === 303) {
+      const location = loginRes.headers.get("location") || "";
+      if (!location.endsWith("/login") && !location.includes("login?")) {
+        return res.json({ ok: true });
+      }
+      return res.json({ ok: false, error: "Forkert email eller adgangskode." });
+    }
+
+    // Some apps return JSON errors
+    if (status === 200 || status === 422) {
+      const body = await loginRes.text();
+      let parsed = null;
+      try { parsed = JSON.parse(body); } catch (_) {}
+
+      if (parsed) {
+        const msg = parsed.message || parsed.error || "";
+        if (parsed.ok === false || msg) {
+          return res.json({ ok: false, error: msg || "Forkert email eller adgangskode." });
+        }
+        if (parsed.ok === true) return res.json({ ok: true });
+      }
+
+      if (body.includes("credentials do not match") || body.includes("These credentials")) {
+        return res.json({ ok: false, error: "Forkert email eller adgangskode." });
+      }
+      if (body.includes("too many login") || body.includes("throttl")) {
+        return res.json({ ok: false, error: "For mange forsøg. Vent lidt og prøv igen." });
+      }
+    }
+
+    return res.json({ ok: false, error: "Login mislykkedes. Tjek dine oplysninger og prøv igen." });
+  } catch (err) {
+    console.error("[InstantID] Login fejl:", err.message);
+    return res.status(500).json({ ok: false, error: "Kunne ikke forbinde til InstantID. Prøv igen." });
+  }
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", ai: AI_PROVIDER, model: AI_PROVIDER === "ollama" ? OLLAMA_MODEL : "gpt_5_5" });

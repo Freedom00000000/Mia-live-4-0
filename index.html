@@ -14,7 +14,38 @@
     <div class="stars stars-S"></div>
   </div>
 
-  <!-- Onboarding / password modal -->
+  <!-- InstantID login modal -->
+  <div id="instantidModal" class="modal-overlay iid-overlay" role="dialog" aria-modal="true" aria-labelledby="iidModalTitle">
+    <div class="modal-box iid-box">
+      <div class="iid-logo">
+        <span class="iid-logo-instant">INSTANT</span><span class="iid-logo-id">ID</span>
+      </div>
+      <h2 id="iidModalTitle" class="modal-title iid-title">Log ind</h2>
+      <p class="modal-desc">Brug din Instant ID-konto</p>
+      <form id="iidForm" class="modal-form" novalidate>
+        <div class="modal-field">
+          <label for="iidEmail">E-mailadresse</label>
+          <input id="iidEmail" type="email" autocomplete="email" placeholder="din@email.com" required>
+        </div>
+        <div class="modal-field">
+          <label for="iidPass">Adgangskode</label>
+          <input id="iidPass" type="password" autocomplete="current-password" placeholder="••••••••" required>
+        </div>
+        <div class="iid-remember-row">
+          <label class="iid-checkbox-label">
+            <input id="iidRemember" type="checkbox">
+            <span>Husk mig</span>
+          </label>
+          <a href="https://instantid.info/password/reset" target="_blank" rel="noopener" class="iid-forgot">Glemt adgangskode?</a>
+        </div>
+        <p id="iidError" class="modal-error" aria-live="polite"></p>
+        <button id="iidSubmit" type="submit" class="modal-btn iid-btn">Log ind</button>
+      </form>
+      <p class="iid-footer-note">Har du ikke en konto? <a href="https://instantid.info" target="_blank" rel="noopener" class="iid-link">Opret her</a></p>
+    </div>
+  </div>
+
+  <!-- Onboarding / name modal (shown after InstantID login for new users) -->
   <div id="miaModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-box">
       <div class="modal-avatar">M</div>
@@ -25,11 +56,6 @@
           <label for="modalName">Dit navn</label>
           <input id="modalName" type="text" autocomplete="given-name" placeholder="Skriv dit navn…" maxlength="40">
         </div>
-        <div class="modal-field">
-          <label for="modalPass">Adgangskode</label>
-          <input id="modalPass" type="password" autocomplete="current-password" placeholder="••••••">
-        </div>
-
         <p id="modalError" class="modal-error" aria-live="polite"></p>
         <button id="modalSubmit" type="submit" class="modal-btn">Åbn MIA</button>
       </form>

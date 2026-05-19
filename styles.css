@@ -652,6 +652,60 @@ textarea.chat-input {
 .role-save-btn:hover  { background: #b520ff; }
 .role-save-btn:active { transform: scale(0.97); }
 
+/* ─── InstantID login modal ─── */
+
+.iid-overlay { z-index: 110; }
+
+.iid-box { gap: 10px; }
+
+.iid-logo {
+  display: flex; align-items: baseline; gap: 3px;
+  margin-bottom: 4px;
+  font-size: 22px; font-weight: 900; letter-spacing: 1px;
+  line-height: 1;
+}
+.iid-logo-instant { color: #fff; }
+.iid-logo-id      { color: #e03030; }
+
+.iid-title { margin-bottom: 2px; }
+
+.iid-remember-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: -2px;
+}
+
+.iid-checkbox-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; color: rgba(255,255,255,0.55);
+  cursor: pointer; user-select: none;
+}
+.iid-checkbox-label input[type="checkbox"] {
+  width: 15px; height: 15px; accent-color: #e03030; cursor: pointer;
+}
+
+.iid-forgot {
+  font-size: 12px; color: rgba(220,80,80,0.85);
+  text-decoration: none; font-weight: 500;
+  transition: color 0.2s;
+}
+.iid-forgot:hover { color: #e03030; text-decoration: underline; }
+
+.iid-btn { background: #e03030; }
+.iid-btn:hover  { background: #f04040; }
+.iid-btn:active { transform: scale(0.97); }
+
+.iid-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.iid-footer-note {
+  font-size: 12px; color: rgba(255,255,255,0.38); text-align: center;
+  margin-top: 4px;
+}
+.iid-link {
+  color: rgba(220,80,80,0.8); text-decoration: none; font-weight: 600;
+  transition: color 0.2s;
+}
+.iid-link:hover { color: #e03030; text-decoration: underline; }
+
 /* ─── Responsive ─── */
 
 @media (max-width: 420px) {

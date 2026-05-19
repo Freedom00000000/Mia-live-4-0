@@ -48,7 +48,7 @@ let PRODIA_API_KEY = localStorage.getItem(PRODIA_KEY_STORAGE) || "";
 
 let B44_API_KEY = localStorage.getItem(B44_KEY_STORAGE) || B44_DEFAULT_KEY;
 
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
   const clearBtn       = document.getElementById("clearBtn");
   const affectionBadge = document.getElementById("affectionBadge");
   const sendBtn      = document.getElementById("sendBtn");
@@ -2252,18 +2252,60 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
   const iidSubmit   = document.getElementById("iidSubmit");
 
   function getIIDSession() {
-    return localStorage.getItem(IID_SESSION_KEY) || sessionStorage.getItem(IID_SESSION_KEY);
+    const raw = localStorage.getItem(IID_SESSION_KEY) || sessionStorage.getItem(IID_SESSION_KEY);
+    if (!raw) return null;
+    try { const s = JSON.parse(raw); return s.token ? s : null; } catch (_) { return null; }
   }
 
-  function setIIDSession(email, remember) {
+  function setIIDSession(email, token, remember) {
+    const ttl = remember ? 7 * 24 * 3600 * 1000 : 24 * 3600 * 1000;
     const store = remember ? localStorage : sessionStorage;
-    store.setItem(IID_SESSION_KEY, JSON.stringify({ email, ts: Date.now() }));
+    store.setItem(IID_SESSION_KEY, JSON.stringify({ email, token, expiresAt: Date.now() + ttl }));
   }
 
   function clearIIDSession() {
     localStorage.removeItem(IID_SESSION_KEY);
     sessionStorage.removeItem(IID_SESSION_KEY);
   }
+
+  async function verifyIIDSession(token) {
+    try {
+      const res = await fetch("/api/instantid/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json();
+      return data.ok === true;
+    } catch (_) {
+      return true; // be lenient on network errors — chat will fail anyway if server is down
+    }
+  }
+
+  async function logoutIID() {
+    const s = getIIDSession();
+    if (s?.token) {
+      try {
+        await fetch("/api/instantid/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: s.token })
+        });
+      } catch (_) {}
+    }
+    clearIIDSession();
+    showIIDModal();
+  }
+
+  // Populate dynamic InstantID URLs from server config
+  fetch("/api/config").then(r => r.json()).then(cfg => {
+    const base = (cfg.instantidBaseUrl || "").replace(/\/+$/, "");
+    if (!base) return;
+    const forgotLink = document.getElementById("iidForgotLink");
+    const signupLink = document.getElementById("iidSignupLink");
+    if (forgotLink) forgotLink.href = `${base}/password/reset`;
+    if (signupLink) signupLink.href = base;
+  }).catch(() => {});
 
   function showIIDModal() {
     iidModal.classList.add("modal--visible");
@@ -2298,7 +2340,7 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
       const data = await res.json();
 
       if (data.ok) {
-        setIIDSession(email, remember);
+        setIIDSession(email, data.token, remember);
         hideIIDModal();
         showModal(!profile.name);
       } else {
@@ -2313,6 +2355,9 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
     iidSubmit.disabled = false;
     iidSubmit.textContent = "Log ind";
   });
+
+  // Logout button
+  document.getElementById("logoutBtn")?.addEventListener("click", logoutIID);
 
   // ─── Modal ─────────────────────────────────────────────────────────────────
 
@@ -2531,9 +2576,11 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
   userInput.disabled = true;
   sendBtn.disabled   = true;
 
-  if (getIIDSession()) {
+  const iidSession = getIIDSession();
+  if (iidSession && await verifyIIDSession(iidSession.token)) {
     showModal(!profile.name);
   } else {
+    clearIIDSession();
     showIIDModal();
   }
 });

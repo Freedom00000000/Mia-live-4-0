@@ -1,5 +1,6 @@
 require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const express = require("express");
+const crypto  = require("crypto");
 const path = require("path");
 
 const app = express();
@@ -7,6 +8,26 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
 const INSTANTID_BASE_URL = (process.env.INSTANTID_BASE_URL || "https://instantid.info").replace(/\/+$/, "");
+
+// ── Server-side session store ────────────────────────────────────────────────
+const sessions = new Map();
+const SESSION_TTL = { default: 24 * 3600 * 1000, remember: 7 * 24 * 3600 * 1000 };
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, s] of sessions) if (s.expiresAt < now) sessions.delete(token);
+}, 3600 * 1000).unref();
+
+function extractCsrfToken(html) {
+  const patterns = [
+    /<input[^>]+name="_token"[^>]+value="([^"]+)"/i,
+    /<input[^>]+value="([^"]+)"[^>]+name="_token"/i,
+    /<meta[^>]+name="csrf-token"[^>]+content="([^"]+)"/i,
+    /<meta[^>]+content="([^"]+)"[^>]+name="csrf-token"/i,
+    /csrf[_-]?token["']?\s*[:=]\s*["']([a-zA-Z0-9+/=_-]{20,})/i,
+  ];
+  for (const p of patterns) { const m = html.match(p); if (m) return m[1]; }
+  return "";
+}
 
 const AI_PROVIDER     = process.env.AI_PROVIDER || "base44";
 const BASE44_API_KEY  = process.env.BASE44_API_KEY || "";
@@ -21,6 +42,10 @@ if (AI_PROVIDER === "base44" && (!BASE44_API_KEY || !BASE44_APP_ID)) {
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
+
+app.get("/api/config", (_req, res) => {
+  res.json({ instantidBaseUrl: INSTANTID_BASE_URL });
+});
 
 // InstantID authentication proxy
 app.post("/api/instantid/login", async (req, res) => {
@@ -41,11 +66,7 @@ app.post("/api/instantid/login", async (req, res) => {
     const html = await pageRes.text();
     const rawCookies = pageRes.headers.getSetCookie ? pageRes.headers.getSetCookie() : [];
     const cookieHeader = rawCookies.map(c => c.split(";")[0]).join("; ");
-
-    // Extract Laravel CSRF token from meta tag or hidden input
-    const csrfMatch = html.match(/name="_token"\s+value="([^"]+)"/) ||
-                      html.match(/<meta\s+name="csrf-token"\s+content="([^"]+)"/);
-    const csrfToken = csrfMatch ? csrfMatch[1] : "";
+    const csrfToken = extractCsrfToken(html);
 
     // Submit login form
     const loginRes = await fetch(`${INSTANTID_BASE_URL}/login`, {
@@ -68,43 +89,56 @@ app.post("/api/instantid/login", async (req, res) => {
     });
 
     const status = loginRes.status;
+    let authOk = false;
 
     // Successful login usually redirects away from /login
     if (status === 302 || status === 301 || status === 303) {
       const location = loginRes.headers.get("location") || "";
-      if (!location.endsWith("/login") && !location.includes("login?")) {
-        return res.json({ ok: true });
-      }
-      return res.json({ ok: false, error: "Forkert email eller adgangskode." });
-    }
-
-    // Some apps return JSON errors
-    if (status === 200 || status === 422) {
+      authOk = !location.endsWith("/login") && !location.includes("login?");
+      if (!authOk) return res.json({ ok: false, error: "Forkert email eller adgangskode." });
+    } else if (status === 200 || status === 422) {
       const body = await loginRes.text();
       let parsed = null;
       try { parsed = JSON.parse(body); } catch (_) {}
 
       if (parsed) {
-        const msg = parsed.message || parsed.error || "";
-        if (parsed.ok === false || msg) {
-          return res.json({ ok: false, error: msg || "Forkert email eller adgangskode." });
+        if (parsed.ok === true) { authOk = true; }
+        else {
+          const msg = parsed.message || parsed.error || "Forkert email eller adgangskode.";
+          return res.json({ ok: false, error: msg });
         }
-        if (parsed.ok === true) return res.json({ ok: true });
-      }
-
-      if (body.includes("credentials do not match") || body.includes("These credentials")) {
+      } else if (body.includes("credentials do not match") || body.includes("These credentials")) {
         return res.json({ ok: false, error: "Forkert email eller adgangskode." });
-      }
-      if (body.includes("too many login") || body.includes("throttl")) {
+      } else if (body.includes("too many login") || body.includes("throttl")) {
         return res.json({ ok: false, error: "For mange forsøg. Vent lidt og prøv igen." });
       }
     }
 
-    return res.json({ ok: false, error: "Login mislykkedes. Tjek dine oplysninger og prøv igen." });
+    if (!authOk) return res.json({ ok: false, error: "Login mislykkedes. Tjek dine oplysninger og prøv igen." });
+
+    // Issue a server-side session token so auth cannot be forged client-side
+    const token = crypto.randomBytes(32).toString("hex");
+    const ttl = remember ? SESSION_TTL.remember : SESSION_TTL.default;
+    sessions.set(token, { email, expiresAt: Date.now() + ttl });
+    return res.json({ ok: true, token });
   } catch (err) {
     console.error("[InstantID] Login fejl:", err.message);
     return res.status(500).json({ ok: false, error: "Kunne ikke forbinde til InstantID. Prøv igen." });
   }
+});
+
+app.post("/api/instantid/verify", (req, res) => {
+  const { token } = req.body || {};
+  if (!token) return res.json({ ok: false });
+  const s = sessions.get(token);
+  if (!s || s.expiresAt < Date.now()) { sessions.delete(token); return res.json({ ok: false }); }
+  return res.json({ ok: true, email: s.email });
+});
+
+app.post("/api/instantid/logout", (req, res) => {
+  const { token } = req.body || {};
+  if (token) sessions.delete(token);
+  return res.json({ ok: true });
 });
 
 app.get("/api/health", (_req, res) => {

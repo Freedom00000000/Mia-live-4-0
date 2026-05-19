@@ -36,12 +36,12 @@
             <input id="iidRemember" type="checkbox">
             <span>Husk mig</span>
           </label>
-          <a href="https://instantid.info/password/reset" target="_blank" rel="noopener" class="iid-forgot">Glemt adgangskode?</a>
+          <a id="iidForgotLink" href="https://instantid.info/password/reset" target="_blank" rel="noopener" class="iid-forgot">Glemt adgangskode?</a>
         </div>
         <p id="iidError" class="modal-error" aria-live="polite"></p>
         <button id="iidSubmit" type="submit" class="modal-btn iid-btn">Log ind</button>
       </form>
-      <p class="iid-footer-note">Har du ikke en konto? <a href="https://instantid.info" target="_blank" rel="noopener" class="iid-link">Opret her</a></p>
+      <p class="iid-footer-note">Har du ikke en konto? <a id="iidSignupLink" href="https://instantid.info" target="_blank" rel="noopener" class="iid-link">Opret her</a></p>
     </div>
   </div>
 
@@ -67,6 +67,7 @@
       <div class="header-top">
         <h1 class="mia-title">MIA</h1>
         <div class="header-actions">
+          <button id="logoutBtn" class="clear-btn" title="Log ud af Instant ID" aria-label="Log ud">⏏</button>
           <button id="apiKeyBtn" class="clear-btn" title="Base44 API-nøgle" aria-label="Indstil API-nøgle">🔑</button>
           <button id="roleBtn" class="clear-btn" title="Rolle &amp; Prompt" aria-label="Tilpas MIA">⚙</button>
           <button id="exportBtn" class="clear-btn" title="Eksporter samtale" aria-label="Download samtale">↓</button>

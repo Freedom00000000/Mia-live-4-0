@@ -7,7 +7,6 @@
     opretter .env og starter eller bygger appen.
 #>
 
-Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $AppName    = "MIA AI"

@@ -33,8 +33,8 @@ function Test-Cmd {
 }
 
 function Reload-Path {
-    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
-    $userPath    = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $machinePath = [System.Environment]::ExpandEnvironmentVariables([System.Environment]::GetEnvironmentVariable("Path", "Machine"))
+    $userPath    = [System.Environment]::ExpandEnvironmentVariables([System.Environment]::GetEnvironmentVariable("Path", "User"))
     $env:Path    = $machinePath + ";" + $userPath
 }
 

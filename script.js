@@ -1098,6 +1098,44 @@ Svar KUN med reglerne, én per linje, ingen nummerering.`;
     } catch (_) { return null; }
   }
 
+  async function evaluateRules() {
+    const rules = profile.miaRules;
+    if (!rules?.length) return null;
+    try {
+      const prompt = `Du er et selvoptimerende AI-system der evaluerer dine egne adfærdsregler.
+
+Her er dine nuværende regler:
+${rules.map((r, i) => `${i + 1}. ${r}`).join("\n")}
+
+For hver regel, vurder:
+- Er den specifik nok til at kunne testes? (ja/nej)
+- Er den stadig relevant? (ja/nej)
+- Skal den revideres, slettes eller beholdes?
+
+Returnér KUN de regler der skal BEHOLDES eller REVIDERES, i revideret form.
+Én regel per linje. Ingen nummerering.`;
+
+      const raw = await fetchAI([{ role: "user", content: prompt }], "Du er MIA.", 0.25);
+      const revisedRules = raw.split("\n").map(r => r.trim()).filter(r => r.length > 8).slice(0, 15);
+      if (!revisedRules.length) return null;
+
+      profile.miaRules = revisedRules.map(r => r.slice(0, 120));
+
+      if (!profile.ruleMetrics) profile.ruleMetrics = {};
+      const oldKeys = Object.keys(profile.ruleMetrics);
+      oldKeys.forEach(k => {
+        if (!profile.miaRules.some(r => r.slice(0, 80) === k)) delete profile.ruleMetrics[k];
+      });
+
+      if (!profile.evaluations) profile.evaluations = [];
+      profile.evaluations.push({ ts: Date.now(), before: rules.length, after: revisedRules.length });
+      if (profile.evaluations.length > 10) profile.evaluations = profile.evaluations.slice(-10);
+
+      saveProfile();
+      return revisedRules;
+    } catch (_) { return null; }
+  }
+
   // ─── Vision: MIA actually sees the image ───────────────────────────────────
 
   async function callMiaAIWithVision(dataUrl, filename) {
@@ -1183,6 +1221,7 @@ Svar KUN med reglerne, én per linje, ingen nummerering.`;
       maybeUpdateSummary();
       if (profile.messageCount % 6  === 0) reflectAndDevelop();
       if (profile.messageCount % 12 === 0) deepSelfUpdate();
+      if (profile.messageCount % 20 === 0) evaluateRules();
       lastMiaReply = reply;
       return reply;
     }
@@ -1721,6 +1760,7 @@ Tilgængelige funktioner:
 • selfOptimize(topic?) — scanner arXiv for nyeste AI-papers. Kald når brugeren beder dig lære noget nyt, opdatere dig selv, eller du selv vil hente ny viden. topic er valgfrit.
 • searchWeb(query) — søger på nettet efter aktuel info. Kald når du mangler ny/aktuel info til at svare ordentligt.
 • saveMemory(content, category) — gem vigtig info. category: "fact" | "preference" | "project" | "decision".
+• evaluateRules() — gennemgå og revider dine egne adfærdsregler. Kald når du vil rydde op i regler der ikke virker.
 
 Kald kun funktioner når det er relevant. Ellers svar normalt.`;
 
@@ -1741,6 +1781,12 @@ Kald kun funktioner når det er relevant. Ellers svar normalt.`;
       const result = await webSearch(args.query);
       removeTyping();
       return result || "Ingen søgeresultater fundet.";
+    }
+    if (name === "evaluateRules") {
+      appendTyping("🔍 Evaluerer regler…");
+      const result = await evaluateRules();
+      removeTyping();
+      return result ? `Regler revideret: ${result.length} beholdt/opdateret.` : "Ingen regler at evaluere.";
     }
     if (name === "saveMemory") {
       const mem = profile.memories || [];
@@ -1857,6 +1903,7 @@ Kald kun funktioner når det er relevant. Ellers svar normalt.`;
       maybeUpdateSummary();
       if (profile.messageCount % 6  === 0) reflectAndDevelop();
       if (profile.messageCount % 12 === 0) deepSelfUpdate();
+      if (profile.messageCount % 20 === 0) evaluateRules();
       return reply;
 
     } catch (err) {

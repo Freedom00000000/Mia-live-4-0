@@ -1177,7 +1177,9 @@ Svar KUN med reglerne, én per linje, ingen nummerering.`;
       apiMessages.push(visionMsg);
       apiMessages.push({ role: "assistant", content: reply });
       saveApiCtx();
-      _lastMiaReplyTs = Date.now();
+      _lastMiaReplyTs   = Date.now();
+      _lastMiaReplyTxt  = reply;
+      _lastRuleSnapshot = [...(profile.miaRules || [])];
       maybeUpdateSummary();
       if (profile.messageCount % 6  === 0) reflectAndDevelop();
       if (profile.messageCount % 12 === 0) deepSelfUpdate();
@@ -1845,8 +1847,10 @@ Kald kun funktioner når det er relevant. Ellers svar normalt.`;
         } catch (_) {}
       }
 
-      lastMiaReply = reply;
-      _lastMiaReplyTs = Date.now();
+      lastMiaReply      = reply;
+      _lastMiaReplyTs   = Date.now();
+      _lastMiaReplyTxt  = reply;
+      _lastRuleSnapshot = [...(profile.miaRules || [])];
       apiMessages.push({ role: "assistant", content: reply });
       smartPruneContext();
       saveApiCtx();
@@ -2364,7 +2368,9 @@ JSON:
 
   // ── Engagement tracking ────────────────────────────────────────────────────
 
-  let _lastMiaReplyTs = 0;
+  let _lastMiaReplyTs  = 0;
+  let _lastMiaReplyTxt = "";
+  let _lastRuleSnapshot = [];
 
   function recordEngagement(userMsg) {
     if (!_lastMiaReplyTs) return;
@@ -2373,6 +2379,65 @@ JSON:
     const engaged = userMsg.length > 40 && msSinceReply < 120000;
     profile.engagementHistory.push({ ts: Date.now(), engaged, replyMs: msSinceReply });
     if (profile.engagementHistory.length > 30) profile.engagementHistory = profile.engagementHistory.slice(-30);
+
+    if (!engaged && _lastRuleSnapshot.length) {
+      syncLearnFromFailure(_lastMiaReplyTxt, userMsg, _lastRuleSnapshot);
+    }
+  }
+
+  async function syncLearnFromFailure(miaReply, userFollowUp, activeRules) {
+    if (!activeRules.length) return;
+    try {
+      const context = `MIAs svar: "${miaReply.slice(0, 300)}"
+Brugerens reaktion: "${userFollowUp.slice(0, 200)}"
+Aktive regler da svaret blev genereret:
+${activeRules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`;
+
+      const sys = `Du er MIA og reviderer dine egne regler i realtid baseret på en samtale der ikke virkede.
+
+${context}
+
+Brugeren var IKKE engageret (kort/hurtigt svar). Én eller flere af dine aktive regler fejlede.
+
+Svar KUN med disse tre linjer, ingen andet:
+FJERN: [nummeret på den regel der fejlede, eller "ingen"]
+ERSTAT: [den reviderede regel — specifik og testbar, eller "ingen"]
+TILFØJ: [ny regel hvis nødvendigt, eller "ingen"]`;
+
+      const raw = await fetchAI([{ role: "user", content: context }], sys, 0.25);
+      const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+
+      const fjernLine  = lines.find(l => l.startsWith("FJERN:"))?.replace("FJERN:", "").trim();
+      const erstLine   = lines.find(l => l.startsWith("ERSTAT:"))?.replace("ERSTAT:", "").trim();
+      const tilføjLine = lines.find(l => l.startsWith("TILFØJ:"))?.replace("TILFØJ:", "").trim();
+
+      if (!profile.miaRules) profile.miaRules = [];
+
+      const idx = parseInt(fjernLine) - 1;
+      if (!isNaN(idx) && idx >= 0 && idx < profile.miaRules.length) {
+        if (erstLine && erstLine !== "ingen" && erstLine.length > 8) {
+          profile.miaRules[idx] = erstLine.slice(0, 120);
+        } else {
+          profile.miaRules.splice(idx, 1);
+        }
+      }
+
+      if (tilføjLine && tilføjLine !== "ingen" && tilføjLine.length > 8) {
+        if (!profile.miaRules.some(r => r.toLowerCase() === tilføjLine.toLowerCase()))
+          profile.miaRules.push(tilføjLine.slice(0, 120));
+      }
+
+      if (!profile.syncRevisions) profile.syncRevisions = [];
+      profile.syncRevisions.push({
+        ts:      Date.now(),
+        removed: fjernLine,
+        revised: erstLine,
+        added:   tilføjLine
+      });
+      if (profile.syncRevisions.length > 20) profile.syncRevisions = profile.syncRevisions.slice(-20);
+
+      saveProfile();
+    } catch (_) {}
   }
 
   // ── Smart context pruning (keeps important messages, not just recent) ──────
@@ -2518,6 +2583,21 @@ JSON:
           el.textContent = `[${date}] ${rule}`;
           memoryContent.appendChild(el);
         });
+      });
+    }
+
+    if (profile.syncRevisions?.length) {
+      const sec6 = document.createElement("div"); sec6.className = "mp-section";
+      sec6.textContent = "Synkrone revisioner"; memoryContent.appendChild(sec6);
+      profile.syncRevisions.slice(-5).reverse().forEach(r => {
+        const date = new Date(r.ts).toLocaleDateString("da-DK");
+        const el = document.createElement("div"); el.className = "mp-memory";
+        const parts = [];
+        if (r.removed && r.removed !== "ingen") parts.push(`↺ fjernet: regel ${r.removed}`);
+        if (r.revised && r.revised !== "ingen") parts.push(`→ ${r.revised}`);
+        if (r.added   && r.added   !== "ingen") parts.push(`+ ${r.added}`);
+        el.textContent = `[${date}] ${parts.join(" | ") || "ingen ændring"}`;
+        memoryContent.appendChild(el);
       });
     }
   }

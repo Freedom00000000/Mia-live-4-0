@@ -1154,8 +1154,11 @@ Returnér KUN de regler der skal BEHOLDES eller REVIDERES, i revideret form.
     if (!rules?.length) return [];
     try {
       const now = Date.now();
-      const threshold = dayThreshold * 24 * 60 * 60 * 1000;
+      const threshold   = dayThreshold * 24 * 60 * 60 * 1000;
+      const gracePeriod = 24 * 60 * 60 * 1000;
       const stale = rules.filter(r => {
+        const age = now - (r.createdAt ?? 0);
+        if (age < gracePeriod) return false;
         const last = r.lastUsed ?? r.createdAt ?? 0;
         return (now - last) > threshold;
       });
@@ -1187,16 +1190,18 @@ Returnér KUN de regler der FORTSAT er værd at beholde. Én per linje. Ingen nu
     if (!rule) return;
     rule.activations = (rule.activations ?? 0) + 1;
     rule.lastUsed    = Date.now();
-    const prev = rule.successRate ?? 0;
-    const hit  = outcome === "success" ? 1 : 0;
-    rule.successRate = Math.round(((prev * (rule.activations - 1) + hit) / rule.activations) * 100) / 100;
+    if (outcome !== "neutral") {
+      const prev = rule.successRate ?? 0;
+      const hit  = outcome === "success" ? 1 : 0;
+      rule.successRate = Math.round(((prev * (rule.activations - 1) + hit) / rule.activations) * 100) / 100;
+    }
     if (outcome === "failure" && rule.activations >= 3 && rule.successRate < 0.4) {
       profile.miaRules = profile.miaRules.filter(r => r.id !== ruleId);
     }
     saveProfile();
   }
 
-  async function selectBestRule(context) {
+  async function selectBestRule(context, autoLog = true) {
     const rules = profile.miaRules;
     if (!rules?.length) return null;
     try {
@@ -1211,7 +1216,13 @@ Returner KUN nummeret på den mest relevante regel. Ingen forklaring.`;
 
       const raw = await fetchAI([{ role: "user", content: prompt }], "Du er MIA.", 0.1);
       const idx = parseInt(raw.trim()) - 1;
-      return (idx >= 0 && idx < rules.length) ? rules[idx] : null;
+      const selected = (idx >= 0 && idx < rules.length) ? rules[idx] : null;
+
+      if (selected && autoLog) {
+        logRuleActivation(selected.id, "neutral");
+      }
+
+      return selected;
     } catch (_) { return null; }
   }
 

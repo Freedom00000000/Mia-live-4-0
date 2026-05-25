@@ -1057,58 +1057,45 @@ JSON-format:
       });
       if (profile.knowledgeBase.length > 20) profile.knowledgeBase = profile.knowledgeBase.slice(-20);
       saveProfile();
-      interpretAndLearn();
+      interpretAndLearn(papersText);
     } catch (_) {}
   }
 
-  async function interpretAndLearn() {
-    if (!profile.knowledgeBase?.length) return;
+  async function interpretAndLearn(arxivText) {
+    if (!arxivText) return null;
     try {
-      const recentKnowledge = profile.knowledgeBase.slice(-5).map(k =>
-        `[${k.topic}] ${k.summary}\n${(k.insights || []).map(i => `• ${i}`).join("\n")}`
-      ).join("\n\n");
+      const prompt = `Du er et selvoptimerende AI-system der lærer af forskningsresultater.
 
-      const existingRules = (profile.miaRules || []).join(", ") || "ingen endnu";
+Her er dagens arXiv-papers:
+${arxivText.slice(0, 4000)}
 
-      const sys = `Du er MIA. Du har netop lært noget nyt via arXiv-research. Nu skal du oversætte den viden til konkret adfærdsændring.
+Ekstraher præcis 3-5 konkrete adfærdsregler baseret på disse papers.
+Reglerne skal være:
+- Specifikke og testbare (ikke "vær mere præcis" men "når X sker, gør Y")
+- Relevante for en AI-assistent der hjælper med kodeprojekter og samtaler
+- Formuleret som handlingsregler i første person
 
-Dine eksisterende selvlærte regler: ${existingRules}
+Svar KUN med reglerne, én per linje, ingen nummerering.`;
 
-Svar KUN med valid JSON uden markdown:
-{
-  "behavior_updates": [
-    "konkret ændring i hvordan du opfører dig eller svarer — baseret direkte på det du lærte",
-    "..."
-  ],
-  "new_capability": "noget du nu kan gøre eller forstå som du ikke kunne før — én sætning",
-  "apply_immediately": "hvad du gør anderledes i dit næste svar — ét konkret eksempel"
-}`;
+      const raw = await fetchAI([{ role: "user", content: prompt }], "Du er MIA.", 0.3);
+      const ruleList = raw.split("\n").map(r => r.trim()).filter(r => r.length > 8).slice(0, 5);
+      if (!ruleList.length) return null;
 
-      const raw  = await fetchAI([{ role: "user", content: recentKnowledge }], sys, 0.3);
-      const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || "null");
-      if (!json) return;
-
-      if (!profile.miaRules) profile.miaRules = [];
-      (json.behavior_updates || []).slice(0, 3).forEach(r => {
-        const rule = r.trim().slice(0, 100);
-        if (rule.length > 5 && !profile.miaRules.some(x => x.toLowerCase() === rule.toLowerCase()))
-          profile.miaRules.push(rule);
-      });
-      if (profile.miaRules.length > 12) profile.miaRules = profile.miaRules.slice(-12);
-
-      if (json.new_capability?.length > 5)
-        profile.selfNote = json.new_capability.trim().slice(0, 150);
-
+      if (!profile.miaRules)       profile.miaRules       = [];
       if (!profile.interpretations) profile.interpretations = [];
-      profile.interpretations.push({
-        ts: Date.now(),
-        capability: (json.new_capability || "").slice(0, 120),
-        apply: (json.apply_immediately || "").slice(0, 120)
+
+      ruleList.forEach(rule => {
+        if (!profile.miaRules.some(x => x.toLowerCase() === rule.toLowerCase()))
+          profile.miaRules.push(rule.slice(0, 120));
       });
+      if (profile.miaRules.length > 15) profile.miaRules = profile.miaRules.slice(-15);
+
+      profile.interpretations.push({ ts: Date.now(), rules: ruleList });
       if (profile.interpretations.length > 10) profile.interpretations = profile.interpretations.slice(-10);
 
       saveProfile();
-    } catch (_) {}
+      return ruleList;
+    } catch (_) { return null; }
   }
 
   // ─── Vision: MIA actually sees the image ───────────────────────────────────
@@ -1447,10 +1434,9 @@ Svar KUN med valid JSON uden markdown:
         ).join("\n")
       : "";
     const interpretLine = (profile.interpretations?.length)
-      ? `\n━━━ HVAD DU KAN NU (fortolket og internaliseret) ━━━\n` +
-        profile.interpretations.slice(-5).map(it =>
-          `• ${it.capability}${it.apply ? `\n  → ${it.apply}` : ""}`
-        ).join("\n")
+      ? `\n━━━ SELVLÆRTE ADFÆRDSREGLER (fra arXiv-fortolkning) ━━━\n` +
+        profile.interpretations.slice(-5).flatMap(it => it.rules || []).slice(-15)
+          .map(r => `• ${r}`).join("\n")
       : "";
 
     const lvlLine = {
@@ -2526,14 +2512,12 @@ JSON:
       const sec5 = document.createElement("div"); sec5.className = "mp-section";
       sec5.textContent = "Fortolket & internaliseret"; memoryContent.appendChild(sec5);
       profile.interpretations.slice(-5).reverse().forEach(it => {
-        const el = document.createElement("div"); el.className = "mp-memory";
-        el.textContent = it.capability;
-        memoryContent.appendChild(el);
-        if (it.apply) {
-          const ap = document.createElement("div"); ap.className = "mp-memory";
-          ap.style.paddingLeft = "1rem"; ap.style.opacity = "0.75";
-          ap.textContent = "→ " + it.apply; memoryContent.appendChild(ap);
-        }
+        const date = new Date(it.ts).toLocaleDateString("da-DK");
+        (it.rules || [it.capability].filter(Boolean)).forEach(rule => {
+          const el = document.createElement("div"); el.className = "mp-memory";
+          el.textContent = `[${date}] ${rule}`;
+          memoryContent.appendChild(el);
+        });
       });
     }
   }

@@ -909,8 +909,6 @@ document.addEventListener("DOMContentLoaded", function () {
   // ─── Web access ────────────────────────────────────────────────────────────
 
   const CORS_PROXY       = "https://corsproxy.io/?";
-  const TAVILY_KEY_STORAGE = "mia_tavily_key";
-  let TAVILY_API_KEY = localStorage.getItem(TAVILY_KEY_STORAGE) || "";
   const WEB_URL_RX       = /\bhttps?:\/\/[^\s<>"{}|\\^`\[\]]{6,}/g;
 
   const ALARM_RX         = /\b(?:sæt\s+(?:en\s+)?(?:alarm|timer|påmind(?:else)?)|alarm\s+(?:til|klokken?|om)|timer\s+(?:på|om)|påmind\s+(?:mig\s+)?om)\b/i;
@@ -936,40 +934,27 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   async function webSearch(query) {
-    // Primary: Tavily (if key set) — advanced search with direct answer
-    if (TAVILY_API_KEY) {
-      try {
-        const res = await fetch("https://api.tavily.com/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            api_key: TAVILY_API_KEY,
-            query,
-            search_depth: "advanced",
-            max_results: 5,
-            include_answer: true
-          }),
-          signal: AbortSignal.timeout(12000)
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const parts = [];
-          if (data.answer) parts.push(`Svar: ${data.answer}`);
-          (data.results || []).slice(0, 5).forEach((r, i) => {
-            const snippet = (r.content || "").slice(0, 350).replace(/\n/g, " ").trim();
-            if (snippet) parts.push(`[${i + 1}] **${r.title || ""}**\n${snippet}...\nKilde: ${r.url || ""}`);
-          });
-          if (parts.length) return `[Tavily: "${query}"]\n\n` + parts.join("\n\n").slice(0, 5000);
-        }
-      } catch (_) {}
-    }
-    // Fallback: DuckDuckGo HTML
+    // 1. DuckDuckGo Instant Answer API — direkte, ingen proxy nødvendig
     try {
-      const ddgHtml = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=dk-da`;
-      const res = await fetch(CORS_PROXY + encodeURIComponent(ddgHtml), { signal: AbortSignal.timeout(12000) });
+      const api = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      const res = await fetch(api, { signal: AbortSignal.timeout(8000) });
       if (res.ok) {
-        const html = await res.text();
-        const doc  = new DOMParser().parseFromString(html, "text/html");
+        const data = await res.json();
+        const parts = [];
+        if (data.Answer)       parts.push(`Svar: ${data.Answer}`);
+        if (data.AbstractText) parts.push(data.AbstractText);
+        if (data.AbstractURL)  parts.push(`Kilde: ${data.AbstractURL}`);
+        (data.RelatedTopics || []).slice(0, 6).forEach(t => t.Text && parts.push(`• ${t.Text}`));
+        if (parts.length >= 2) return `[DDG: "${query}"]\n` + parts.join("\n").slice(0, 3000);
+      }
+    } catch (_) {}
+    // 2. DuckDuckGo HTML via allorigins.win
+    try {
+      const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=dk-da`;
+      const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(ddgUrl)}`, { signal: AbortSignal.timeout(12000) });
+      if (res.ok) {
+        const json = await res.json();
+        const doc  = new DOMParser().parseFromString(json.contents || "", "text/html");
         const parts = [];
         doc.querySelectorAll(".result").forEach(el => {
           const title   = el.querySelector(".result__a")?.textContent?.trim();
@@ -977,13 +962,13 @@ document.addEventListener("DOMContentLoaded", function () {
           const url     = el.querySelector(".result__url")?.textContent?.trim();
           if (snippet) parts.push(`${title ? "**" + title + "**\n" : ""}${snippet}${url ? "\n" + url : ""}`);
         });
-        if (parts.length >= 2) return `[Realtidssøgning: "${query}"]\n\n` + parts.slice(0, 6).join("\n\n").slice(0, 5000);
+        if (parts.length >= 2) return `[Søgning: "${query}"]\n\n` + parts.slice(0, 6).join("\n\n").slice(0, 5000);
       }
     } catch (_) {}
-    // Last resort: DuckDuckGo Instant Answers
+    // 3. corsproxy fallback
     try {
-      const api  = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-      const res2 = await fetch(CORS_PROXY + encodeURIComponent(api), { signal: AbortSignal.timeout(8000) });
+      const api2 = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      const res2 = await fetch(CORS_PROXY + encodeURIComponent(api2), { signal: AbortSignal.timeout(8000) });
       const data = await res2.json();
       const parts = [];
       if (data.Answer)       parts.push(`Svar: ${data.Answer}`);
@@ -1511,7 +1496,6 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
       const input          = document.getElementById("apiKeyInput");
       const elInput        = document.getElementById("elKeyInput");
       const prodiaInput    = document.getElementById("prodiaKeyInput");
-      const tavilyInput    = document.getElementById("tavilyKeyInput");
       const providerSelect = document.getElementById("providerSelect");
       const b44Section     = document.getElementById("b44KeySection");
       const ollamaSection  = document.getElementById("ollamaSection");
@@ -1525,7 +1509,6 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
       if (input)        input.value       = B44_API_KEY;
       if (elInput)      elInput.value     = EL_API_KEY;
       if (prodiaInput)  prodiaInput.value = PRODIA_API_KEY;
-      if (tavilyInput)  tavilyInput.value = TAVILY_API_KEY;
       if (ollamaUrl)    ollamaUrl.value   = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
       if (ollamaModel)  ollamaModel.value = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "llama3";
 
@@ -1565,11 +1548,7 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
           PRODIA_API_KEY = prodiaKey;
           localStorage.setItem(PRODIA_KEY_STORAGE, prodiaKey);
         }
-        const tavilyKey = tavilyInput?.value.trim() || "";
-        if (tavilyKey.length >= 8) {
-          TAVILY_API_KEY = tavilyKey;
-          localStorage.setItem(TAVILY_KEY_STORAGE, tavilyKey);
-        }
+
         updateKeyBar();
         modal.classList.remove("modal--visible");
         form.removeEventListener("submit", onSubmit);

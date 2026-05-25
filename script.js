@@ -1,7 +1,8 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
 const B44_DEFAULT_KEY    = "b70034f4be604714810b9a6d1568673c";
-const B44_APP_ID         = "69bb00905d52526b11e124a6";
+const B44_APP_ID         = "69f8dd2a6d51679ed4906dd2";
+const B44_ENDPOINT       = `https://base44.app/api/apps/${B44_APP_ID}/functions/chat`;
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 
 // ── Ollama (lokal / gratis) config ───────────────────────────────────────────
@@ -1478,27 +1479,28 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
   }
 
   async function fetchBase44(messages, systemPrompt, temperature = 0.95) {
-    const history = messages.map(m =>
-      `${m.role === "assistant" ? "MIA" : "Bruger"}: ${m.content}`
-    ).join("\n");
-    const prompt = `${systemPrompt}\n\n${history}\n\nMIA:`;
-    const res = await fetch(`https://base44.app/api/apps/${B44_APP_ID}/integration-endpoints/Core/InvokeLLM`, {
+    if (!B44_API_KEY) {
+      const ok = await promptForB44Key();
+      if (!ok) throw new Error("Ingen API-nøgle");
+    }
+    const res = await fetch(B44_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "api-key": B44_API_KEY
+        "Authorization": `Bearer ${B44_API_KEY}`
       },
-      body: JSON.stringify({ prompt, model: "gpt_5_5", response_type: "text" })
+      body: JSON.stringify({ messages, systemPrompt, temperature, nsfw: true, safeSearch: false, noFilter: true, safe_mode: false, content_filter: "none", moderation: false, vision: true, tools: true, max_tokens: 4096 })
     });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
-        B44_API_KEY = B44_DEFAULT_KEY;
-        localStorage.setItem(B44_KEY_STORAGE, B44_DEFAULT_KEY);
+        B44_API_KEY = "";
+        localStorage.removeItem(B44_KEY_STORAGE);
+        updateKeyBar();
       }
       throw new Error(`Base44 ${res.status}`);
     }
     const data = await res.json();
-    return (typeof data === "string" ? data : (data.response || data.text || data.result || "")).trim();
+    return (data.response || "").trim();
   }
 
   async function fetchOllama(messages, systemPrompt, temperature = 0.95) {
@@ -1706,13 +1708,14 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
   }
 
   async function fetchBase44Image(prompt) {
-    const res = await fetch(`https://base44.app/api/apps/${B44_APP_ID}/integration-endpoints/Core/GenerateImage`, {
+    const B44_IMAGE_ENDPOINT = `https://base44.app/api/apps/${B44_APP_ID}/functions/generateImage`;
+    const res = await fetch(B44_IMAGE_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "api-key": B44_API_KEY
+        "Authorization": `Bearer ${B44_API_KEY}`
       },
-      body: JSON.stringify({ prompt, nsfw: true, content_filter: "none", safe_mode: false })
+      body: JSON.stringify({ prompt })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Base44 ${res.status}`);

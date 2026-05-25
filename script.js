@@ -2172,10 +2172,8 @@ Kald kun funktioner når det er relevant. Ellers svar normalt.`;
         await new Promise(r => setTimeout(r, 80));
       }
     }
-    // Speak all parts in sequence, then restart mic in live mode
-    speakAll(parts, () => {
-      if (liveMode && !userInput.disabled) startListening();
-    });
+    // Restart mic in live voice mode
+    if (liveMode && !userInput.disabled) startListening();
   }
 
   // ─── Confession system (dyb affection only) ───────────────────────────────

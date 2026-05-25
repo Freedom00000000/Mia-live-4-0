@@ -964,6 +964,74 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (_) { return null; }
   }
 
+  // ─── Selv-optimering — "optimer dig selv" ────────────────────────────────
+
+  const OPTIMIZE_RX = /\b(optimer\s+dig\s+selv|selvopdater|self.?optim|opdater\s+dig\s+selv|lær\s+noget\s+nyt|scan\s+internettet)\b/i;
+  const TAVILY_KEY_STORAGE = "mia_tavily_key";
+  let TAVILY_API_KEY = localStorage.getItem(TAVILY_KEY_STORAGE) || "";
+
+  async function selfOptimize() {
+    const queries = [
+      "latest AI breakthroughs 2025 new models",
+      "dansk teknologi nyheder 2025",
+      "psychology behavior science 2025 research"
+    ];
+
+    const results = [];
+
+    // 1. Prøv Tavily hvis nøgle er sat
+    if (TAVILY_API_KEY) {
+      try {
+        const res = await fetch("https://api.tavily.com/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            api_key: TAVILY_API_KEY,
+            query: queries[0],
+            search_depth: "advanced",
+            max_results: 5,
+            include_answer: true
+          }),
+          signal: AbortSignal.timeout(12000)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.answer) results.push(`Sammenfatning: ${data.answer}`);
+          (data.results || []).slice(0, 4).forEach(r =>
+            results.push(`**${r.title}**\n${(r.content || "").slice(0, 300)}\n${r.url}`)
+          );
+        }
+      } catch (_) {}
+    }
+
+    // 2. Fallback: DuckDuckGo realtidssøgning på alle queries
+    if (results.length < 3) {
+      for (const q of queries) {
+        const r = await webSearch(q);
+        if (r) results.push(r);
+      }
+    }
+
+    // 3. Hent en relevant AI-nyhedsside
+    try {
+      const newsContent = await fetchWebContent("https://techcrunch.com/category/artificial-intelligence/");
+      if (newsContent) results.push(`[AI-nyheder fra TechCrunch]\n${newsContent.slice(0, 2000)}`);
+    } catch (_) {}
+
+    if (!results.length) return null;
+
+    const summary = results.join("\n\n").slice(0, 6000);
+    const today = new Date().toLocaleDateString("da-DK", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+    return `[SELV-OPTIMERING AKTIVERET — ${today}]
+
+Mia har netop scannet internettet for de nyeste fremskridt inden for AI, teknologi og videnskab:
+
+${summary}
+
+Integrer denne viden naturligt. Tænk over hvad der er relevant for ${n()}s projekter og interesser. Opdater din forståelse af verden.`;
+  }
+
   // ─── Vision: MIA actually sees the image ───────────────────────────────────
 
   async function callMiaAIWithVision(dataUrl, filename) {
@@ -1430,6 +1498,7 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
       const input          = document.getElementById("apiKeyInput");
       const elInput        = document.getElementById("elKeyInput");
       const prodiaInput    = document.getElementById("prodiaKeyInput");
+      const tavilyInput    = document.getElementById("tavilyKeyInput");
       const providerSelect = document.getElementById("providerSelect");
       const b44Section     = document.getElementById("b44KeySection");
       const ollamaSection  = document.getElementById("ollamaSection");
@@ -1443,6 +1512,7 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
       if (input)        input.value       = B44_API_KEY;
       if (elInput)      elInput.value     = EL_API_KEY;
       if (prodiaInput)  prodiaInput.value = PRODIA_API_KEY;
+      if (tavilyInput)  tavilyInput.value = TAVILY_API_KEY;
       if (ollamaUrl)    ollamaUrl.value   = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
       if (ollamaModel)  ollamaModel.value = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "llama3";
 
@@ -1481,6 +1551,11 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
         if (prodiaKey.length >= 8) {
           PRODIA_API_KEY = prodiaKey;
           localStorage.setItem(PRODIA_KEY_STORAGE, prodiaKey);
+        }
+        const tavilyKey = tavilyInput?.value.trim() || "";
+        if (tavilyKey.length >= 8) {
+          TAVILY_API_KEY = tavilyKey;
+          localStorage.setItem(TAVILY_KEY_STORAGE, tavilyKey);
         }
         updateKeyBar();
         modal.classList.remove("modal--visible");
@@ -2536,6 +2611,31 @@ JSON:
     const userBubble = appendBubble("user", input);
     addReadReceipt(userBubble);
     conversationHistory.push({ role: "user", text: input });
+
+    if (OPTIMIZE_RX.test(input)) {
+      appendTyping("🧠 Scanner internettet…");
+      const optimizeCtx = await selfOptimize();
+      removeTyping();
+      if (optimizeCtx) {
+        apiMessages.push({ role: "user", content: optimizeCtx });
+        appendTyping();
+        try {
+          const reply = cleanReply(await fetchAI(apiMessages, buildSystemPrompt()));
+          apiMessages.push({ role: "assistant", content: reply });
+          saveApiCtx();
+          await displayResponse(reply);
+          conversationHistory.push({ role: "mia", text: reply });
+          saveHistory();
+          deepSelfUpdate();
+        } catch (_) {
+          await displayResponse("hmm... noget gik galt med scanningen. prøv igen.");
+        }
+      } else {
+        await displayResponse("jeg kunne ikke nå internettet lige nu ||| prøv igen om lidt");
+      }
+      sendBtn.disabled = false; userInput.disabled = false; userInput.focus();
+      return;
+    }
 
     if (isImageRequest(input)) {
       const prompt = extractImagePrompt(input);

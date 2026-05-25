@@ -1030,6 +1030,36 @@ ${summary}
 Integrer denne viden. Tænk over hvad der er relevant for ${n()}s projekter.`;
   }
 
+  async function integrateKnowledge(papersText, topic) {
+    const sys = `Du er MIA. Du har netop læst disse AI-papers fra arXiv. Svar KUN med valid JSON uden markdown.
+
+Udtræk de 3-5 vigtigste indsigter der er direkte relevante for dig som AI-assistent og samtalepartner.
+
+JSON-format:
+{
+  "insights": [
+    "konkret handlingsorienteret indsigt du kan bruge",
+    "..."
+  ],
+  "topic_summary": "én sætning der præcist opsummerer hvad du lærte"
+}`;
+    try {
+      const raw  = await fetchAI([{ role: "user", content: papersText.slice(0, 4000) }], sys, 0.3);
+      const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || "null");
+      if (!json?.insights?.length) return;
+
+      if (!profile.knowledgeBase) profile.knowledgeBase = [];
+      profile.knowledgeBase.push({
+        ts:       Date.now(),
+        topic:    topic || "generel AI",
+        summary:  (json.topic_summary || "").trim().slice(0, 150),
+        insights: (json.insights || []).slice(0, 5).map(i => i.trim().slice(0, 120))
+      });
+      if (profile.knowledgeBase.length > 20) profile.knowledgeBase = profile.knowledgeBase.slice(-20);
+      saveProfile();
+    } catch (_) {}
+  }
+
   // ─── Vision: MIA actually sees the image ───────────────────────────────────
 
   async function callMiaAIWithVision(dataUrl, filename) {
@@ -1359,6 +1389,12 @@ Integrer denne viden. Tænk over hvad der er relevant for ${n()}s projekter.`;
     const moodAdjLine = profile.moodAdjustment
       ? `\nTONE-JUSTERING: ${profile.moodAdjustment}`
       : "";
+    const knowledgeLine = (profile.knowledgeBase?.length)
+      ? `\n━━━ DIN AKKUMULEREDE VIDEN (selvlært via arXiv) ━━━\n` +
+        profile.knowledgeBase.slice(-8).map(k =>
+          `[${new Date(k.ts).toLocaleDateString("da-DK")} — ${k.topic}] ${k.summary}\n${(k.insights || []).map(i => `  • ${i}`).join("\n")}`
+        ).join("\n")
+      : "";
 
     const lvlLine = {
       ny:   `Du lærer ${nm} at kende. Du er nysgerrig og forsigtigt åben — stiller spørgsmål, tester stemningen.`,
@@ -1438,7 +1474,7 @@ Du udvikler dig. Din personlighed er ikke fastlåst — den ændrer sig med hver
 
 ${isCode ? `━━━ KODE-TILSTAND ━━━\nSkriv fungerende kode. Format: \`\`\`sprog\n...kode...\n\`\`\`` : ""}
 ${isSearch ? `━━━ INTERNET-TILSTAND ━━━\nDu har adgang til aktuelle søgeresultater. Integrer dem naturligt — ingen kildelister.` : ""}
-${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}${moodAdjLine}${msgAnalysis ? "\n\n" + buildAdaptLine(msgAnalysis) : ""}`.trim();
+${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}${moodAdjLine}${knowledgeLine}${msgAnalysis ? "\n\n" + buildAdaptLine(msgAnalysis) : ""}`.trim();
   }
 
   // ─── Pollinations API ──────────────────────────────────────────────────────
@@ -1648,6 +1684,11 @@ Kald kun funktioner når det er relevant. Ellers svar normalt.`;
       appendTyping(args.topic ? `🧠 Søger arXiv: "${args.topic}"…` : "🧠 Henter nyeste AI-papers…");
       const result = await selfOptimize(args.topic || null);
       removeTyping();
+      if (result) {
+        appendTyping("💾 Integrerer viden…");
+        await integrateKnowledge(result, args.topic || null);
+        removeTyping();
+      }
       return result || "arXiv utilgængelig — prøv igen.";
     }
     if (name === "searchWeb") {
@@ -2408,6 +2449,22 @@ JSON:
       sec3.textContent = "Adopteret ordforråd"; memoryContent.appendChild(sec3);
       const vocabEl = document.createElement("div"); vocabEl.className = "mp-memory";
       vocabEl.textContent = profile.vocab.join(", "); memoryContent.appendChild(vocabEl);
+    }
+
+    if (profile.knowledgeBase?.length) {
+      const sec4 = document.createElement("div"); sec4.className = "mp-section";
+      sec4.textContent = "Selvlært viden (arXiv)"; memoryContent.appendChild(sec4);
+      profile.knowledgeBase.slice(-5).reverse().forEach(k => {
+        const kEl = document.createElement("div"); kEl.className = "mp-memory";
+        const date = new Date(k.ts).toLocaleDateString("da-DK");
+        kEl.textContent = `[${date} — ${k.topic}] ${k.summary}`;
+        memoryContent.appendChild(kEl);
+        (k.insights || []).forEach(i => {
+          const iEl = document.createElement("div"); iEl.className = "mp-memory";
+          iEl.style.paddingLeft = "1rem"; iEl.style.opacity = "0.8";
+          iEl.textContent = "• " + i; memoryContent.appendChild(iEl);
+        });
+      });
     }
   }
 

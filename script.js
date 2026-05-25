@@ -1651,6 +1651,56 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
       : fetchBase44(messages, systemPrompt, temperature);
   }
 
+  const TOOL_CALL_RX = /<tool_call>([\s\S]*?)<\/tool_call>/;
+
+  const TOOLS_SYSTEM_BLOCK = `
+━━━ FUNKTIONER DU KAN KALDE ━━━
+Når du vil kalde en funktion, svar KUN med dette format (ingen ekstra tekst):
+<tool_call>{"name":"FUNKTIONSNAVN","args":{...}}</tool_call>
+
+Tilgængelige funktioner:
+• selfOptimize(topic?) — scanner arXiv for nyeste AI-papers. Kald når brugeren beder dig lære noget nyt, opdatere dig selv, eller du selv vil hente ny viden. topic er valgfrit.
+• searchWeb(query) — søger på nettet efter aktuel info. Kald når du mangler ny/aktuel info til at svare ordentligt.
+• saveMemory(content, category) — gem vigtig info. category: "fact" | "preference" | "project" | "decision".
+
+Kald kun funktioner når det er relevant. Ellers svar normalt.`;
+
+  async function fetchAIWithTools(messages, systemPrompt, temperature = 0.95) {
+    const sysWithTools = systemPrompt + "\n\n" + TOOLS_SYSTEM_BLOCK;
+    const raw = await fetchAI(messages, sysWithTools, temperature);
+
+    const match = raw.match(TOOL_CALL_RX);
+    if (!match) return raw;
+
+    let call;
+    try { call = JSON.parse(match[1].trim()); } catch (_) { return raw; }
+
+    const { name, args = {} } = call;
+    let toolResult = null;
+
+    if (name === "selfOptimize") {
+      appendTyping(args.topic ? `🧠 Søger arXiv: "${args.topic}"…` : "🧠 Henter nyeste AI-papers…");
+      toolResult = await selfOptimize(args.topic || null);
+      removeTyping();
+    } else if (name === "searchWeb") {
+      appendTyping(`🔍 Søger: "${args.query}"…`);
+      toolResult = await webSearch(args.query);
+      removeTyping();
+    } else if (name === "saveMemory") {
+      saveProfile({ ...profile });
+      const mem = profile.memories || [];
+      mem.push({ ts: Date.now(), category: args.category || "fact", content: args.content });
+      profile.memories = mem.slice(-200);
+      saveProfile(profile);
+      toolResult = `husket: "${args.content}" [${args.category}]`;
+    }
+
+    if (!toolResult) return raw;
+
+    const followUp = [...messages, { role: "assistant", content: raw }, { role: "user", content: `[Funktionsresultat: ${name}]\n${toolResult}` }];
+    return fetchAI(followUp, systemPrompt, temperature);
+  }
+
   // Every 15 messages, compress recent context into a summary MIA can reference
   async function maybeUpdateSummary() {
     if (profile.messageCount % 15 !== 0 || profile.messageCount === 0) return;
@@ -1684,10 +1734,10 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
     try {
       let reply;
       try {
-        reply = await fetchAI(apiMessages, sysPrompt);
+        reply = await fetchAIWithTools(apiMessages, sysPrompt);
       } catch (_) {
         await new Promise(r => setTimeout(r, 1400));
-        reply = await fetchAI(apiMessages, sysPrompt);
+        reply = await fetchAIWithTools(apiMessages, sysPrompt);
       }
 
       reply = cleanReply(reply);
@@ -2626,36 +2676,6 @@ JSON:
     addReadReceipt(userBubble);
     conversationHistory.push({ role: "user", text: input });
 
-    if (OPTIMIZE_RX.test(input)) {
-      // Udtræk emne hvis angivet: "optimer dig selv: memory systems"
-      const topicMatch = input.match(/optimer\s+dig\s+selv[:\s]+(.+)/i)
-                      || input.match(/self.?optim[:\s]+(.+)/i)
-                      || input.match(/lær\s+noget\s+nyt[:\s]+(.+)/i);
-      const topic = topicMatch ? topicMatch[1].trim() : null;
-      appendTyping(topic ? `🧠 Søger arXiv: "${topic}"…` : "🧠 Henter nyeste AI-papers…");
-      const optimizeCtx = await selfOptimize(topic);
-      removeTyping();
-      if (optimizeCtx) {
-        apiMessages.push({ role: "user", content: optimizeCtx });
-        appendTyping();
-        try {
-          const reply = cleanReply(await fetchAI(apiMessages, buildSystemPrompt()));
-          apiMessages.push({ role: "assistant", content: reply });
-          saveApiCtx();
-          await displayResponse(reply);
-          conversationHistory.push({ role: "mia", text: reply });
-          saveHistory();
-          deepSelfUpdate();
-        } catch (_) {
-          await displayResponse("hmm... noget gik galt med scanningen. prøv igen.");
-        }
-      } else {
-        await displayResponse("jeg kunne ikke nå internettet lige nu ||| prøv igen om lidt");
-      }
-      sendBtn.disabled = false; userInput.disabled = false; userInput.focus();
-      return;
-    }
-
     if (isImageRequest(input)) {
       const prompt = extractImagePrompt(input);
       await displayResponse(`vent et sekund... ||| jeg laver noget til dig, ${n()}`);
@@ -2716,7 +2736,7 @@ JSON:
       }
     }
 
-    // ── Web access: fetch URLs or search ─────────────────────────────────────
+    // ── Web access: fetch URLs (MIA handles search herself via tools) ──────────
     let webCtx = "";
     const urls = [...new Set((input.match(WEB_URL_RX) || []).slice(0, 2))];
     if (urls.length) {
@@ -2725,15 +2745,11 @@ JSON:
         const content = await fetchWebContent(url);
         if (content) webCtx += `\n\n[Webindhold fra ${url}]\n${content}`;
       }
-    } else if (SEARCH_INTENT_RX.test(input)) {
-      appendTyping("🔍 Søger i realtid…");
-      const results = await webSearch(input);
-      if (results) webCtx += `\n\n${results}`;
     }
 
-    const isSearch = !!webCtx && !urls.length;
+    const isSearch = false;
     const messageForAI = webCtx
-      ? `${input}${webCtx}\n\n[Integrer søgeresultaterne naturligt i dit svar som Mia. Nævn kun relevante fund – ingen kildelister.]`
+      ? `${input}${webCtx}\n\n[Integrer webindholdet naturligt i dit svar som Mia.]`
       : input;
     appendTyping();
     await new Promise(r => setTimeout(r, 200 + Math.random() * 300));

@@ -970,9 +970,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const TAVILY_KEY_STORAGE = "mia_tavily_key";
   let TAVILY_API_KEY = localStorage.getItem(TAVILY_KEY_STORAGE) || "";
 
-  async function selfOptimize() {
-    const query = "cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL";
-    const url   = `https://export.arxiv.org/api/query?search_query=${query}&sortBy=submittedDate&sortOrder=descending&max_results=5`;
+  async function selfOptimize(topic = null) {
+    // Dynamisk query — specifikt emne eller generel AI
+    const query = topic
+      ? `all:${encodeURIComponent(topic)}+AND+(cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL)`
+      : "cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL";
+
+    const url = `https://export.arxiv.org/api/query?search_query=${query}&sortBy=submittedDate&sortOrder=descending&max_results=5`;
 
     // Prøv direkte (arXiv har åben CORS), fallback til proxy
     let xml = null;
@@ -991,7 +995,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // Browser-native XML-parser (erstatter fast-xml-parser)
     const doc     = new DOMParser().parseFromString(xml, "application/xml");
     const entries = [...doc.querySelectorAll("entry")];
-    if (!entries.length) return null;
+    if (!entries.length) return `arXiv returnerede ingen resultater${topic ? ` for "${topic}"` : ""}.`;
 
     const summary = entries.slice(0, 5).map((e, i) => {
       const title    = e.querySelector("title")?.textContent?.replace(/\n/g, " ").trim() || "?";
@@ -1002,10 +1006,11 @@ document.addEventListener("DOMContentLoaded", function () {
       return `[${i + 1}] ${title}\nForfatter(e): ${authors}\n${abstract}...\nLink: ${link}`;
     }).join("\n\n");
 
-    const today = new Date().toLocaleDateString("da-DK");
+    const topicLabel = topic ? `Emne: "${topic}"` : "Generel AI (cs.AI / cs.LG / cs.CL)";
+    const today      = new Date().toLocaleDateString("da-DK");
 
     return `SELV-OPDATERING — ${today}
-Kilde: arXiv (cs.AI / cs.LG / cs.CL)
+Kilde: arXiv | ${topicLabel}
 
 Nyeste AI-papers:
 
@@ -2595,8 +2600,13 @@ JSON:
     conversationHistory.push({ role: "user", text: input });
 
     if (OPTIMIZE_RX.test(input)) {
-      appendTyping("🧠 Scanner internettet…");
-      const optimizeCtx = await selfOptimize();
+      // Udtræk emne hvis angivet: "optimer dig selv: memory systems"
+      const topicMatch = input.match(/optimer\s+dig\s+selv[:\s]+(.+)/i)
+                      || input.match(/self.?optim[:\s]+(.+)/i)
+                      || input.match(/lær\s+noget\s+nyt[:\s]+(.+)/i);
+      const topic = topicMatch ? topicMatch[1].trim() : null;
+      appendTyping(topic ? `🧠 Søger arXiv: "${topic}"…` : "🧠 Henter nyeste AI-papers…");
+      const optimizeCtx = await selfOptimize(topic);
       removeTyping();
       if (optimizeCtx) {
         apiMessages.push({ role: "user", content: optimizeCtx });

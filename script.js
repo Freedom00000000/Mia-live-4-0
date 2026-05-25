@@ -1649,7 +1649,7 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
       : fetchBase44(messages, systemPrompt, temperature);
   }
 
-  const TOOL_CALL_RX = /<tool_call>([\s\S]*?)<\/tool_call>/;
+  const TOOL_CALL_RX_G = /<tool_call>([\s\S]*?)<\/tool_call>/g;
 
   const TOOLS_SYSTEM_BLOCK = `
 ━━━ FUNKTIONER DU KAN KALDE ━━━
@@ -1663,40 +1663,50 @@ Tilgængelige funktioner:
 
 Kald kun funktioner når det er relevant. Ellers svar normalt.`;
 
-  async function fetchAIWithTools(messages, systemPrompt, temperature = 0.95) {
-    const sysWithTools = systemPrompt + "\n\n" + TOOLS_SYSTEM_BLOCK;
-    const raw = await fetchAI(messages, sysWithTools, temperature);
-
-    const match = raw.match(TOOL_CALL_RX);
-    if (!match) return raw;
-
-    let call;
-    try { call = JSON.parse(match[1].trim()); } catch (_) { return raw; }
-
-    const { name, args = {} } = call;
-    let toolResult = null;
-
+  async function executeTool(name, args = {}) {
     if (name === "selfOptimize") {
       appendTyping(args.topic ? `🧠 Søger arXiv: "${args.topic}"…` : "🧠 Henter nyeste AI-papers…");
-      toolResult = await selfOptimize(args.topic || null);
+      const result = await selfOptimize(args.topic || null);
       removeTyping();
-    } else if (name === "searchWeb") {
+      return result || "arXiv utilgængelig — prøv igen.";
+    }
+    if (name === "searchWeb") {
       appendTyping(`🔍 Søger: "${args.query}"…`);
-      toolResult = await webSearch(args.query);
+      const result = await webSearch(args.query);
       removeTyping();
-    } else if (name === "saveMemory") {
-      saveProfile({ ...profile });
+      return result || "Ingen søgeresultater fundet.";
+    }
+    if (name === "saveMemory") {
       const mem = profile.memories || [];
       mem.push({ ts: Date.now(), category: args.category || "fact", content: args.content });
       profile.memories = mem.slice(-200);
       saveProfile(profile);
-      toolResult = `husket: "${args.content}" [${args.category}]`;
+      return `husket: "${args.content}" [${args.category}]`;
+    }
+    return `ukendt funktion: ${name}`;
+  }
+
+  async function fetchAIWithTools(messages, systemPrompt, temperature = 0.95) {
+    const sysWithTools = systemPrompt + "\n\n" + TOOLS_SYSTEM_BLOCK;
+    const workingMsgs = [...messages];
+
+    for (let round = 0; round < 5; round++) {
+      const raw = await fetchAI(workingMsgs, sysWithTools, temperature);
+
+      const calls = [...raw.matchAll(TOOL_CALL_RX_G)];
+      if (!calls.length) return raw;
+
+      workingMsgs.push({ role: "assistant", content: raw });
+
+      for (const match of calls) {
+        let call;
+        try { call = JSON.parse(match[1].trim()); } catch (_) { continue; }
+        const result = await executeTool(call.name, call.args || {});
+        workingMsgs.push({ role: "user", content: `[Funktionsresultat: ${call.name}]\n${result}` });
+      }
     }
 
-    if (!toolResult) return raw;
-
-    const followUp = [...messages, { role: "assistant", content: raw }, { role: "user", content: `[Funktionsresultat: ${name}]\n${toolResult}` }];
-    return fetchAI(followUp, systemPrompt, temperature);
+    return fetchAI(workingMsgs, systemPrompt, temperature);
   }
 
   // Every 15 messages, compress recent context into a summary MIA can reference

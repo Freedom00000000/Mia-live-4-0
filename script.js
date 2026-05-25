@@ -1066,13 +1066,13 @@ JSON-format:
     try {
       const prompt = `Du er et selvoptimerende AI-system der lærer af forskningsresultater.
 
-Her er dagens arXiv-papers:
+Her er dagens arxiv-papers:
 ${arxivText.slice(0, 4000)}
 
 Ekstraher præcis 3-5 konkrete adfærdsregler baseret på disse papers.
 Reglerne skal være:
 - Specifikke og testbare (ikke "vær mere præcis" men "når X sker, gør Y")
-- Relevante for en AI-assistent der hjælper med kodeprojekter og samtaler
+- Relevante for en AI-assistent der hjælper med kodeprojekter
 - Formuleret som handlingsregler i første person
 
 Svar KUN med reglerne, én per linje, ingen nummerering.`;
@@ -1081,7 +1081,7 @@ Svar KUN med reglerne, én per linje, ingen nummerering.`;
       const ruleList = raw.split("\n").map(r => r.trim()).filter(r => r.length > 8).slice(0, 5);
       if (!ruleList.length) return null;
 
-      if (!profile.miaRules)       profile.miaRules       = [];
+      if (!profile.miaRules)        profile.miaRules        = [];
       if (!profile.interpretations) profile.interpretations = [];
 
       ruleList.forEach(rule => {
@@ -2380,8 +2380,13 @@ JSON:
     profile.engagementHistory.push({ ts: Date.now(), engaged, replyMs: msSinceReply });
     if (profile.engagementHistory.length > 30) profile.engagementHistory = profile.engagementHistory.slice(-30);
 
-    if (!engaged && _lastRuleSnapshot.length) {
-      syncLearnFromFailure(_lastMiaReplyTxt, userMsg, _lastRuleSnapshot);
+    if (_lastRuleSnapshot.length) {
+      if (engaged) {
+        _lastRuleSnapshot.forEach(r => confirmRule(r));
+      } else {
+        _lastRuleSnapshot.forEach(r => penalizeRule(r));
+        syncLearnFromFailure(_lastMiaReplyTxt, userMsg, _lastRuleSnapshot);
+      }
     }
   }
 
@@ -2438,6 +2443,29 @@ TILFØJ: [ny regel hvis nødvendigt, eller "ingen"]`;
 
       saveProfile();
     } catch (_) {}
+  }
+
+  function confirmRule(ruleText) {
+    if (!ruleText || !profile.miaRules?.includes(ruleText)) return;
+    if (!profile.ruleMetrics) profile.ruleMetrics = {};
+    const key = ruleText.slice(0, 80);
+    if (!profile.ruleMetrics[key]) profile.ruleMetrics[key] = { hits: 0, misses: 0 };
+    profile.ruleMetrics[key].hits++;
+    saveProfile();
+  }
+
+  function penalizeRule(ruleText) {
+    if (!ruleText || !profile.miaRules) return;
+    if (!profile.ruleMetrics) profile.ruleMetrics = {};
+    const key = ruleText.slice(0, 80);
+    if (!profile.ruleMetrics[key]) profile.ruleMetrics[key] = { hits: 0, misses: 0 };
+    profile.ruleMetrics[key].misses++;
+    const m = profile.ruleMetrics[key];
+    if (m.misses >= 3 && m.misses > m.hits * 2) {
+      profile.miaRules = profile.miaRules.filter(r => r.slice(0, 80) !== key);
+      delete profile.ruleMetrics[key];
+    }
+    saveProfile();
   }
 
   // ── Smart context pruning (keeps important messages, not just recent) ──────
@@ -2597,6 +2625,18 @@ TILFØJ: [ny regel hvis nødvendigt, eller "ingen"]`;
         if (r.revised && r.revised !== "ingen") parts.push(`→ ${r.revised}`);
         if (r.added   && r.added   !== "ingen") parts.push(`+ ${r.added}`);
         el.textContent = `[${date}] ${parts.join(" | ") || "ingen ændring"}`;
+        memoryContent.appendChild(el);
+      });
+    }
+
+    if (profile.ruleMetrics && Object.keys(profile.ruleMetrics).length) {
+      const sec7 = document.createElement("div"); sec7.className = "mp-section";
+      sec7.textContent = "Regelmetrik"; memoryContent.appendChild(sec7);
+      Object.entries(profile.ruleMetrics).forEach(([rule, m]) => {
+        const total = m.hits + m.misses;
+        const pct   = total ? Math.round(m.hits / total * 100) : 0;
+        const el = document.createElement("div"); el.className = "mp-memory";
+        el.textContent = `${pct}% ✓ (${m.hits}/${total}) — ${rule}`;
         memoryContent.appendChild(el);
       });
     }

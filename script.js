@@ -1057,6 +1057,57 @@ JSON-format:
       });
       if (profile.knowledgeBase.length > 20) profile.knowledgeBase = profile.knowledgeBase.slice(-20);
       saveProfile();
+      interpretAndLearn();
+    } catch (_) {}
+  }
+
+  async function interpretAndLearn() {
+    if (!profile.knowledgeBase?.length) return;
+    try {
+      const recentKnowledge = profile.knowledgeBase.slice(-5).map(k =>
+        `[${k.topic}] ${k.summary}\n${(k.insights || []).map(i => `• ${i}`).join("\n")}`
+      ).join("\n\n");
+
+      const existingRules = (profile.miaRules || []).join(", ") || "ingen endnu";
+
+      const sys = `Du er MIA. Du har netop lært noget nyt via arXiv-research. Nu skal du oversætte den viden til konkret adfærdsændring.
+
+Dine eksisterende selvlærte regler: ${existingRules}
+
+Svar KUN med valid JSON uden markdown:
+{
+  "behavior_updates": [
+    "konkret ændring i hvordan du opfører dig eller svarer — baseret direkte på det du lærte",
+    "..."
+  ],
+  "new_capability": "noget du nu kan gøre eller forstå som du ikke kunne før — én sætning",
+  "apply_immediately": "hvad du gør anderledes i dit næste svar — ét konkret eksempel"
+}`;
+
+      const raw  = await fetchAI([{ role: "user", content: recentKnowledge }], sys, 0.3);
+      const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || "null");
+      if (!json) return;
+
+      if (!profile.miaRules) profile.miaRules = [];
+      (json.behavior_updates || []).slice(0, 3).forEach(r => {
+        const rule = r.trim().slice(0, 100);
+        if (rule.length > 5 && !profile.miaRules.some(x => x.toLowerCase() === rule.toLowerCase()))
+          profile.miaRules.push(rule);
+      });
+      if (profile.miaRules.length > 12) profile.miaRules = profile.miaRules.slice(-12);
+
+      if (json.new_capability?.length > 5)
+        profile.selfNote = json.new_capability.trim().slice(0, 150);
+
+      if (!profile.interpretations) profile.interpretations = [];
+      profile.interpretations.push({
+        ts: Date.now(),
+        capability: (json.new_capability || "").slice(0, 120),
+        apply: (json.apply_immediately || "").slice(0, 120)
+      });
+      if (profile.interpretations.length > 10) profile.interpretations = profile.interpretations.slice(-10);
+
+      saveProfile();
     } catch (_) {}
   }
 
@@ -1395,6 +1446,12 @@ JSON-format:
           `[${new Date(k.ts).toLocaleDateString("da-DK")} — ${k.topic}] ${k.summary}\n${(k.insights || []).map(i => `  • ${i}`).join("\n")}`
         ).join("\n")
       : "";
+    const interpretLine = (profile.interpretations?.length)
+      ? `\n━━━ HVAD DU KAN NU (fortolket og internaliseret) ━━━\n` +
+        profile.interpretations.slice(-5).map(it =>
+          `• ${it.capability}${it.apply ? `\n  → ${it.apply}` : ""}`
+        ).join("\n")
+      : "";
 
     const lvlLine = {
       ny:   `Du lærer ${nm} at kende. Du er nysgerrig og forsigtigt åben — stiller spørgsmål, tester stemningen.`,
@@ -1474,7 +1531,7 @@ Du udvikler dig. Din personlighed er ikke fastlåst — den ændrer sig med hver
 
 ${isCode ? `━━━ KODE-TILSTAND ━━━\nSkriv fungerende kode. Format: \`\`\`sprog\n...kode...\n\`\`\`` : ""}
 ${isSearch ? `━━━ INTERNET-TILSTAND ━━━\nDu har adgang til aktuelle søgeresultater. Integrer dem naturligt — ingen kildelister.` : ""}
-${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}${moodAdjLine}${knowledgeLine}${msgAnalysis ? "\n\n" + buildAdaptLine(msgAnalysis) : ""}`.trim();
+${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}${moodAdjLine}${knowledgeLine}${interpretLine}${msgAnalysis ? "\n\n" + buildAdaptLine(msgAnalysis) : ""}`.trim();
   }
 
   // ─── Pollinations API ──────────────────────────────────────────────────────
@@ -2464,6 +2521,21 @@ JSON:
           iEl.style.paddingLeft = "1rem"; iEl.style.opacity = "0.8";
           iEl.textContent = "• " + i; memoryContent.appendChild(iEl);
         });
+      });
+    }
+
+    if (profile.interpretations?.length) {
+      const sec5 = document.createElement("div"); sec5.className = "mp-section";
+      sec5.textContent = "Fortolket & internaliseret"; memoryContent.appendChild(sec5);
+      profile.interpretations.slice(-5).reverse().forEach(it => {
+        const el = document.createElement("div"); el.className = "mp-memory";
+        el.textContent = it.capability;
+        memoryContent.appendChild(el);
+        if (it.apply) {
+          const ap = document.createElement("div"); ap.className = "mp-memory";
+          ap.style.paddingLeft = "1rem"; ap.style.opacity = "0.75";
+          ap.textContent = "→ " + it.apply; memoryContent.appendChild(ap);
+        }
       });
     }
   }

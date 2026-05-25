@@ -146,6 +146,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function getTopTopics() {
+    if (!profile.topics || typeof profile.topics !== "object") return [];
     return Object.entries(profile.topics)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)

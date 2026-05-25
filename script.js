@@ -908,6 +908,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // ─── Web access ────────────────────────────────────────────────────────────
 
   const CORS_PROXY       = "https://corsproxy.io/?";
+  const TAVILY_KEY_STORAGE = "mia_tavily_key";
+  let TAVILY_API_KEY = localStorage.getItem(TAVILY_KEY_STORAGE) || "";
   const WEB_URL_RX       = /\bhttps?:\/\/[^\s<>"{}|\\^`\[\]]{6,}/g;
   const SEARCH_INTENT_RX = /\b(søg(?: efter)?|find ud af|google|kig op|hvad er det nyeste|hvad sker der|se online|tjek(?: online| op)?|nyheder om|hvem er|hvad er|hvornår|prisen på|vejret i|aktuel|live|breaking|seneste nyt|i dag)\b/i;
   const ALARM_RX         = /\b(?:sæt\s+(?:en\s+)?(?:alarm|timer|påmind(?:else)?)|alarm\s+(?:til|klokken?|om)|timer\s+(?:på|om)|påmind\s+(?:mig\s+)?om)\b/i;
@@ -933,8 +935,35 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   async function webSearch(query) {
+    // Primary: Tavily (if key set) — advanced search with direct answer
+    if (TAVILY_API_KEY) {
+      try {
+        const res = await fetch("https://api.tavily.com/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            api_key: TAVILY_API_KEY,
+            query,
+            search_depth: "advanced",
+            max_results: 5,
+            include_answer: true
+          }),
+          signal: AbortSignal.timeout(12000)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const parts = [];
+          if (data.answer) parts.push(`Svar: ${data.answer}`);
+          (data.results || []).slice(0, 5).forEach((r, i) => {
+            const snippet = (r.content || "").slice(0, 350).replace(/\n/g, " ").trim();
+            if (snippet) parts.push(`[${i + 1}] **${r.title || ""}**\n${snippet}...\nKilde: ${r.url || ""}`);
+          });
+          if (parts.length) return `[Tavily: "${query}"]\n\n` + parts.join("\n\n").slice(0, 5000);
+        }
+      } catch (_) {}
+    }
+    // Fallback: DuckDuckGo HTML
     try {
-      // Real-time HTML search via DuckDuckGo
       const ddgHtml = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=dk-da`;
       const res = await fetch(CORS_PROXY + encodeURIComponent(ddgHtml), { signal: AbortSignal.timeout(12000) });
       if (res.ok) {
@@ -950,7 +979,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (parts.length >= 2) return `[Realtidssøgning: "${query}"]\n\n` + parts.slice(0, 6).join("\n\n").slice(0, 5000);
       }
     } catch (_) {}
-    // Fallback: DuckDuckGo JSON Instant Answers
+    // Last resort: DuckDuckGo Instant Answers
     try {
       const api  = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
       const res2 = await fetch(CORS_PROXY + encodeURIComponent(api), { signal: AbortSignal.timeout(8000) });
@@ -967,8 +996,6 @@ document.addEventListener("DOMContentLoaded", function () {
   // ─── Selv-optimering — "optimer dig selv" ────────────────────────────────
 
   const OPTIMIZE_RX = /\b(optimer\s+dig\s+selv|selvopdater|self.?optim|opdater\s+dig\s+selv|lær\s+noget\s+nyt|scan\s+internettet)\b/i;
-  const TAVILY_KEY_STORAGE = "mia_tavily_key";
-  let TAVILY_API_KEY = localStorage.getItem(TAVILY_KEY_STORAGE) || "";
 
   async function selfOptimize(topic = null) {
     // Dynamisk query — specifikt emne eller generel AI

@@ -911,7 +911,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const TAVILY_KEY_STORAGE = "mia_tavily_key";
   let TAVILY_API_KEY = localStorage.getItem(TAVILY_KEY_STORAGE) || "";
   const WEB_URL_RX       = /\bhttps?:\/\/[^\s<>"{}|\\^`\[\]]{6,}/g;
-  const SEARCH_INTENT_RX = /\b(søg(?: efter)?|find ud af|google|kig op|hvad er det nyeste|hvad sker der|se online|tjek(?: online| op)?|nyheder om|hvem er|hvad er|hvornår|prisen på|vejret i|aktuel|live|breaking|seneste nyt|i dag)\b/i;
+
   const ALARM_RX         = /\b(?:sæt\s+(?:en\s+)?(?:alarm|timer|påmind(?:else)?)|alarm\s+(?:til|klokken?|om)|timer\s+(?:på|om)|påmind\s+(?:mig\s+)?om)\b/i;
   const ALARM_LIST_RX    = /\b(?:vis\s+(?:mine\s+)?(?:alarmer|timere)|hvad\s+(?:alarmer|timere)\s+har\s+jeg|mine\s+alarmer)\b/i;
   const NOTE_SAVE_RX     = /\b(?:gem\s+(?:en\s+)?(?:note|notat)|skriv\s+(?:det\s+)?ned)\s*[:!]?\s*\S/i;
@@ -993,9 +993,7 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (_) { return null; }
   }
 
-  // ─── Selv-optimering — "optimer dig selv" ────────────────────────────────
-
-  const OPTIMIZE_RX = /\b(optimer\s+dig\s+selv|selvopdater|self.?optim|opdater\s+dig\s+selv|lær\s+noget\s+nyt|scan\s+internettet)\b/i;
+  // ─── Selv-optimering ─────────────────────────────────────────────────────
 
   async function selfOptimize(topic = null) {
     // Dynamisk query — specifikt emne eller generel AI

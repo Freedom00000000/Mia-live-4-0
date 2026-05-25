@@ -970,102 +970,48 @@ document.addEventListener("DOMContentLoaded", function () {
   const TAVILY_KEY_STORAGE = "mia_tavily_key";
   let TAVILY_API_KEY = localStorage.getItem(TAVILY_KEY_STORAGE) || "";
 
-  async function fetchArxiv() {
+  async function selfOptimize() {
+    const query = "cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL";
+    const url   = `https://export.arxiv.org/api/query?search_query=${query}&sortBy=submittedDate&sortOrder=descending&max_results=5`;
+
+    // Prøv direkte (arXiv har åben CORS), fallback til proxy
+    let xml = null;
     try {
-      const query = "cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL";
-      const url   = `https://export.arxiv.org/api/query?search_query=${query}&sortBy=submittedDate&sortOrder=descending&max_results=5`;
-      // arXiv har bred CORS-support — prøv direkte, fallback til proxy
-      let xml = null;
+      const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (r.ok) xml = await r.text();
+    } catch (_) {}
+    if (!xml) {
       try {
-        const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
-        if (r.ok) xml = await r.text();
-      } catch (_) {}
-      if (!xml) {
         const r = await fetch(CORS_PROXY + encodeURIComponent(url), { signal: AbortSignal.timeout(12000) });
         if (r.ok) xml = await r.text();
-      }
-      if (!xml) return null;
-
-      const doc     = new DOMParser().parseFromString(xml, "application/xml");
-      const entries = [...doc.querySelectorAll("entry")];
-      if (!entries.length) return null;
-
-      const papers = entries.slice(0, 5).map((e, i) => {
-        const title    = e.querySelector("title")?.textContent?.replace(/\n/g, " ").trim() || "?";
-        const abstract = (e.querySelector("summary")?.textContent || "").replace(/\n/g, " ").trim().slice(0, 300);
-        const authors  = [...e.querySelectorAll("author name")].slice(0, 2).map(a => a.textContent).join(", ");
-        const link     = e.querySelector("id")?.textContent?.trim() || "";
-        return `[${i + 1}] ${title}\nForfattere: ${authors}\n${abstract}…\n${link}`;
-      }).join("\n\n");
-
-      return `[arXiv — nyeste AI-papers (cs.AI / cs.LG / cs.CL)]\n\n${papers}`;
-    } catch (_) { return null; }
-  }
-
-  async function selfOptimize() {
-    const results = [];
-
-    // 1. arXiv — nyeste peer-reviewed AI-forskning
-    appendTyping("📡 Henter arXiv AI-papers…");
-    const arxiv = await fetchArxiv();
-    if (arxiv) results.push(arxiv);
-
-    // 2. Tavily hvis nøgle er sat (dybere websøgning)
-    if (TAVILY_API_KEY) {
-      try {
-        appendTyping("🔬 Tavily deep search…");
-        const res = await fetch("https://api.tavily.com/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            api_key: TAVILY_API_KEY,
-            query: "latest AI breakthroughs 2025 new models algorithms",
-            search_depth: "advanced",
-            max_results: 5,
-            include_answer: true
-          }),
-          signal: AbortSignal.timeout(12000)
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const parts = [];
-          if (data.answer) parts.push(`Sammenfatning: ${data.answer}`);
-          (data.results || []).slice(0, 4).forEach(r =>
-            parts.push(`**${r.title}**\n${(r.content || "").slice(0, 300)}\n${r.url}`)
-          );
-          if (parts.length) results.push(`[Tavily søgning]\n${parts.join("\n\n")}`);
-        }
       } catch (_) {}
     }
+    if (!xml) return null;
 
-    // 3. DuckDuckGo realtidssøgning
-    if (results.length < 2) {
-      appendTyping("🔍 Søger på nettet…");
-      for (const q of ["latest AI research 2025", "AI nyheder Danmark 2025", "psychology neuroscience 2025"]) {
-        const r = await webSearch(q);
-        if (r) { results.push(r); break; }
-      }
-    }
+    // Browser-native XML-parser (erstatter fast-xml-parser)
+    const doc     = new DOMParser().parseFromString(xml, "application/xml");
+    const entries = [...doc.querySelectorAll("entry")];
+    if (!entries.length) return null;
 
-    // 4. TechCrunch AI
-    try {
-      appendTyping("📰 Henter AI-nyheder…");
-      const news = await fetchWebContent("https://techcrunch.com/category/artificial-intelligence/");
-      if (news) results.push(`[TechCrunch AI]\n${news.slice(0, 1500)}`);
-    } catch (_) {}
+    const summary = entries.slice(0, 5).map((e, i) => {
+      const title    = e.querySelector("title")?.textContent?.replace(/\n/g, " ").trim() || "?";
+      const abstract = (e.querySelector("summary")?.textContent || "").replace(/\n/g, " ").trim().slice(0, 300);
+      const authors  = [...e.querySelectorAll("author name")]
+        .slice(0, 2).map(a => a.textContent.trim()).join(", ");
+      const link     = e.querySelector("id")?.textContent?.trim() || "";
+      return `[${i + 1}] ${title}\nForfatter(e): ${authors}\n${abstract}...\nLink: ${link}`;
+    }).join("\n\n");
 
-    if (!results.length) return null;
+    const today = new Date().toLocaleDateString("da-DK");
 
-    const summary = results.join("\n\n").slice(0, 7000);
-    const today   = new Date().toLocaleDateString("da-DK", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    return `SELV-OPDATERING — ${today}
+Kilde: arXiv (cs.AI / cs.LG / cs.CL)
 
-    return `[SELV-OPTIMERING — ${today}]
-
-Mia har netop scannet de nyeste AI-papers fra arXiv og aktuelle nyheder:
+Nyeste AI-papers:
 
 ${summary}
 
-Integrer denne viden naturligt i dine svar. Tænk over hvad der er relevant for ${n()}s projekter og interesser. Opdater din forståelse af verden.`;
+Integrer denne viden. Tænk over hvad der er relevant for ${n()}s projekter.`;
   }
 
   // ─── Vision: MIA actually sees the image ───────────────────────────────────

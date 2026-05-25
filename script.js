@@ -909,7 +909,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const CORS_PROXY       = "https://corsproxy.io/?";
   const WEB_URL_RX       = /\bhttps?:\/\/[^\s<>"{}|\\^`\[\]]{6,}/g;
-  const SEARCH_INTENT_RX = /\b(søg(?: efter)?|find ud af|google|kig op|hvad er det nyeste|se online|tjek(?: online| op)?|hvad sker der med|nyheder om)\b/i;
+  const SEARCH_INTENT_RX = /\b(søg(?: efter)?|find ud af|google|kig op|hvad er det nyeste|hvad sker der|se online|tjek(?: online| op)?|nyheder om|hvem er|hvad er|hvornår|prisen på|vejret i|aktuel|live|breaking|seneste nyt|i dag)\b/i;
   const ALARM_RX         = /\b(?:sæt\s+(?:en\s+)?(?:alarm|timer|påmind(?:else)?)|alarm\s+(?:til|klokken?|om)|timer\s+(?:på|om)|påmind\s+(?:mig\s+)?om)\b/i;
   const ALARM_LIST_RX    = /\b(?:vis\s+(?:mine\s+)?(?:alarmer|timere)|hvad\s+(?:alarmer|timere)\s+har\s+jeg|mine\s+alarmer)\b/i;
   const NOTE_SAVE_RX     = /\b(?:gem\s+(?:en\s+)?(?:note|notat)|skriv\s+(?:det\s+)?ned)\s*[:!]?\s*\S/i;
@@ -934,15 +934,33 @@ document.addEventListener("DOMContentLoaded", function () {
 
   async function webSearch(query) {
     try {
-      const api = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-      const res  = await fetch(CORS_PROXY + encodeURIComponent(api), { signal: AbortSignal.timeout(8000) });
-      const data = await res.json();
+      // Real-time HTML search via DuckDuckGo
+      const ddgHtml = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=dk-da`;
+      const res = await fetch(CORS_PROXY + encodeURIComponent(ddgHtml), { signal: AbortSignal.timeout(12000) });
+      if (res.ok) {
+        const html = await res.text();
+        const doc  = new DOMParser().parseFromString(html, "text/html");
+        const parts = [];
+        doc.querySelectorAll(".result").forEach(el => {
+          const title   = el.querySelector(".result__a")?.textContent?.trim();
+          const snippet = el.querySelector(".result__snippet")?.textContent?.trim();
+          const url     = el.querySelector(".result__url")?.textContent?.trim();
+          if (snippet) parts.push(`${title ? "**" + title + "**\n" : ""}${snippet}${url ? "\n" + url : ""}`);
+        });
+        if (parts.length >= 2) return `[Realtidssøgning: "${query}"]\n\n` + parts.slice(0, 6).join("\n\n").slice(0, 5000);
+      }
+    } catch (_) {}
+    // Fallback: DuckDuckGo JSON Instant Answers
+    try {
+      const api  = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      const res2 = await fetch(CORS_PROXY + encodeURIComponent(api), { signal: AbortSignal.timeout(8000) });
+      const data = await res2.json();
       const parts = [];
       if (data.Answer)       parts.push(`Svar: ${data.Answer}`);
       if (data.AbstractText) parts.push(data.AbstractText);
       if (data.AbstractURL)  parts.push(`Kilde: ${data.AbstractURL}`);
       (data.RelatedTopics || []).slice(0, 5).forEach(t => t.Text && parts.push(`• ${t.Text}`));
-      return parts.length ? parts.join("\n").slice(0, 3000) : null;
+      return parts.length ? `[Søgeresultater: "${query}"]\n` + parts.join("\n").slice(0, 3000) : null;
     } catch (_) { return null; }
   }
 
@@ -1553,12 +1571,12 @@ Din stemning nu: ${getMoodDesc()}.${customLine}${obeyLine}${msgAnalysis ? "\n\n"
     return norm(reply) === norm(lastMiaReply);
   }
 
-  async function callMiaAI(userMessage) {
+  async function callMiaAI(userMessage, isSearch = false) {
     apiMessages.push({ role: "user", content: userMessage });
 
     const isCode   = CODE_RX.test(userMessage);
     const analysis = analyzeMessage(userMessage);
-    const sysPrompt = buildSystemPrompt(false, isCode, analysis);
+    const sysPrompt = buildSystemPrompt(isSearch, isCode, analysis);
 
     try {
       let reply;
@@ -2419,25 +2437,28 @@ JSON format: {"learned":["...", "..."],"opinion":"...","next_topic":"..."}`;
     let webCtx = "";
     const urls = [...new Set((input.match(WEB_URL_RX) || []).slice(0, 2))];
     if (urls.length) {
-      appendTyping("Henter webside…");
+      appendTyping("🌐 Henter webside…");
       for (const url of urls) {
         const content = await fetchWebContent(url);
         if (content) webCtx += `\n\n[Webindhold fra ${url}]\n${content}`;
       }
     } else if (SEARCH_INTENT_RX.test(input)) {
-      appendTyping("Søger på nettet…");
+      appendTyping("🔍 Søger i realtid…");
       const results = await webSearch(input);
-      if (results) webCtx += `\n\n[DuckDuckGo søgeresultater]\n${results}`;
+      if (results) webCtx += `\n\n${results}`;
     }
 
-    const messageForAI = webCtx ? `${input}${webCtx}` : input;
+    const isSearch = !!webCtx && !urls.length;
+    const messageForAI = webCtx
+      ? `${input}${webCtx}\n\n[Integrer søgeresultaterne naturligt i dit svar som Mia. Nævn kun relevante fund – ingen kildelister.]`
+      : input;
     appendTyping();
     await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
     try {
       const camFrame = (voiceCallActive && camActive) ? captureVideoFrame() : null;
       const response = camFrame
         ? await callMiaAIWithVoiceAndVision(messageForAI, camFrame)
-        : await callMiaAI(messageForAI);
+        : await callMiaAI(messageForAI, isSearch);
       conversationHistory.push({ role: "mia", text: response });
       await displayResponse(response);
       saveHistory();

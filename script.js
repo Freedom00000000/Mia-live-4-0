@@ -1,3 +1,6 @@
+// ── InstantID auth ───────────────────────────────────────────────────────────
+const IID_SESSION_KEY = "mia_iid_session";
+
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
 const B44_DEFAULT_KEY    = "b70034f4be604714810b9a6d1568673c";
@@ -46,7 +49,7 @@ let PRODIA_API_KEY = localStorage.getItem(PRODIA_KEY_STORAGE) || "";
 
 let B44_API_KEY = localStorage.getItem(B44_KEY_STORAGE) || B44_DEFAULT_KEY;
 
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
   const clearBtn       = document.getElementById("clearBtn");
   const affectionBadge = document.getElementById("affectionBadge");
   const sendBtn      = document.getElementById("sendBtn");
@@ -58,7 +61,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const modalError   = document.getElementById("modalError");
   const nameField    = document.getElementById("modalName");
   const nameRow      = document.getElementById("nameRow");
-  const passField    = document.getElementById("modalPass");
   const affectionEl  = document.getElementById("affectionLabel");
   const appContainer = document.querySelector(".app-container");
   const micBtn       = document.getElementById("micBtn");
@@ -2948,6 +2950,124 @@ TILFØJ: [ny regel hvis nødvendigt, eller "ingen"]`;
     });
   }
 
+  // ─── InstantID auth ────────────────────────────────────────────────────────
+
+  const iidModal    = document.getElementById("instantidModal");
+  const iidForm     = document.getElementById("iidForm");
+  const iidEmail    = document.getElementById("iidEmail");
+  const iidPass     = document.getElementById("iidPass");
+  const iidRemember = document.getElementById("iidRemember");
+  const iidError    = document.getElementById("iidError");
+  const iidSubmit   = document.getElementById("iidSubmit");
+
+  function getIIDSession() {
+    const raw = localStorage.getItem(IID_SESSION_KEY) || sessionStorage.getItem(IID_SESSION_KEY);
+    if (!raw) return null;
+    try { const s = JSON.parse(raw); return s.token ? s : null; } catch (_) { return null; }
+  }
+
+  function setIIDSession(email, token, remember) {
+    const ttl = remember ? 7 * 24 * 3600 * 1000 : 24 * 3600 * 1000;
+    const store = remember ? localStorage : sessionStorage;
+    store.setItem(IID_SESSION_KEY, JSON.stringify({ email, token, expiresAt: Date.now() + ttl }));
+  }
+
+  function clearIIDSession() {
+    localStorage.removeItem(IID_SESSION_KEY);
+    sessionStorage.removeItem(IID_SESSION_KEY);
+  }
+
+  async function verifyIIDSession(token) {
+    try {
+      const res = await fetch("/api/instantid/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token })
+      });
+      const data = await res.json();
+      return data.ok === true;
+    } catch (_) {
+      return true; // be lenient on network errors — chat will fail anyway if server is down
+    }
+  }
+
+  async function logoutIID() {
+    const s = getIIDSession();
+    if (s?.token) {
+      try {
+        await fetch("/api/instantid/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: s.token })
+        });
+      } catch (_) {}
+    }
+    clearIIDSession();
+    showIIDModal();
+  }
+
+  // Populate dynamic InstantID URLs from server config
+  fetch("/api/config").then(r => r.json()).then(cfg => {
+    const base = (cfg.instantidBaseUrl || "").replace(/\/+$/, "");
+    if (!base) return;
+    const forgotLink = document.getElementById("iidForgotLink");
+    const signupLink = document.getElementById("iidSignupLink");
+    if (forgotLink) forgotLink.href = `${base}/password/reset`;
+    if (signupLink) signupLink.href = base;
+  }).catch(() => {});
+
+  function showIIDModal() {
+    iidModal.classList.add("modal--visible");
+    setTimeout(() => iidEmail.focus(), 60);
+  }
+
+  function hideIIDModal() {
+    iidModal.classList.remove("modal--visible");
+  }
+
+  iidForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    iidError.textContent = "";
+    const email    = iidEmail.value.trim();
+    const password = iidPass.value;
+    const remember = iidRemember.checked;
+
+    if (!email || !password) {
+      iidError.textContent = "Udfyld email og adgangskode.";
+      return;
+    }
+
+    iidSubmit.disabled = true;
+    iidSubmit.textContent = "Logger ind…";
+
+    try {
+      const res = await fetch("/api/instantid/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, remember })
+      });
+      const data = await res.json();
+
+      if (data.ok) {
+        setIIDSession(email, data.token, remember);
+        hideIIDModal();
+        showModal(!profile.name);
+      } else {
+        iidError.textContent = data.error || "Login mislykkedes. Prøv igen.";
+        iidPass.value = "";
+        iidPass.focus();
+      }
+    } catch (_) {
+      iidError.textContent = "Netværksfejl. Tjek forbindelsen.";
+    }
+
+    iidSubmit.disabled = false;
+    iidSubmit.textContent = "Log ind";
+  });
+
+  // Logout button
+  document.getElementById("logoutBtn")?.addEventListener("click", logoutIID);
+
   // ─── Modal ─────────────────────────────────────────────────────────────────
 
   function updateKeyBar() {
@@ -2961,7 +3081,7 @@ TILFØJ: [ny regel hvis nødvendigt, eller "ingen"]`;
     const apiKeyRow = document.getElementById("modalApiKeyRow");
     if (apiKeyRow) apiKeyRow.style.display = B44_API_KEY ? "none" : "flex";
     modal.classList.add("modal--visible");
-    setTimeout(() => (isNewUser ? nameField : passField).focus(), 60);
+    setTimeout(() => nameField.focus(), 60);
   }
 
   function hideModal() {
@@ -2971,12 +3091,6 @@ TILFØJ: [ny regel hvis nødvendigt, eller "ingen"]`;
   modalForm.addEventListener("submit", e => {
     e.preventDefault();
     modalError.textContent = "";
-    if (passField.value.trim() !== "Mia") {
-      modalError.textContent = "Forkert adgangskode.";
-      passField.value = "";
-      passField.focus();
-      return;
-    }
     if (nameRow.style.display !== "none") {
       const entered = nameField.value.trim();
       if (!entered) { modalError.textContent = "Skriv dit navn."; nameField.focus(); return; }
@@ -3171,5 +3285,12 @@ TILFØJ: [ny regel hvis nødvendigt, eller "ingen"]`;
   });
   userInput.disabled = true;
   sendBtn.disabled   = true;
-  showModal(!profile.name);
+
+  const iidSession = getIIDSession();
+  if (iidSession && await verifyIIDSession(iidSession.token)) {
+    showModal(!profile.name);
+  } else {
+    clearIIDSession();
+    showIIDModal();
+  }
 });

@@ -29,8 +29,7 @@ function startServer(port) {
 // ── Build tray icon from embedded data (no external file needed) ────────────
 function makeTrayIcon() {
   // 16×16 magenta-on-dark "M" icon encoded as PNG data URL
-  const dataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/" +
-    "9hAAAAAXNSR0IArs4c6QAAAARnQU5ErkJggg==";
+  const dataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAZElEQVR4nGPk5eX9z0ABYKJEM1UMYIExLviuhwsabA7EqQFdHVYXICsiJI7TC+iKcRmKYQA+52OTx+oCmCKYrTAam+EEYwGX0wkagG4bLq/hdQFME75wIegFQoFKcUpkHPqZCQCffB/VBk4kNQAAAABJRU5ErkJggg==";
   try {
     const img = nativeImage.createFromPath(path.join(ROOT, "assets", "icon.png"));
     if (!img.isEmpty()) return img;
@@ -70,14 +69,14 @@ function createChatWindow() {
     title: "MIA",
     autoHideMenuBar: true,
     backgroundColor: "#0d0d0d",
-    icon: path.join(ROOT, "assets", "icon.png"),
+    icon: makeTrayIcon(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
 
-  win.loadURL(`http://localhost:${PORT}`);
+  win.loadURL(`http://127.0.0.1:${PORT}`);
 
   // Minimise to tray instead of closing
   win.on("close", e => {

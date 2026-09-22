@@ -8,7 +8,7 @@ app.use(express.static(path.join(__dirname)));
 
 const AI_PROVIDER     = process.env.AI_PROVIDER || "base44";
 const BASE44_API_KEY  = process.env.BASE44_API_KEY || "";
-const BASE44_APP_ID   = process.env.BASE44_APP_ID  || "";
+const BASE44_APP_ID   = process.env.BASE44_APP_ID  || "69f8dd2a6d51679ed4906dd2";
 const BASE44_CHAT_URL = `https://base44.app/api/apps/${BASE44_APP_ID}/functions/chat`;
 const OLLAMA_URL      = process.env.OLLAMA_URL   || "http://localhost:11434";
 const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3";
@@ -36,8 +36,9 @@ app.post("/api/chat", async (req, res) => {
 
   const provider = req.body.provider || AI_PROVIDER;
 
-  if (provider === "base44" && (!BASE44_API_KEY || !BASE44_APP_ID)) {
-    return res.status(503).json({ text: "Base44 er ikke konfigureret på serveren." });
+  const base44Key = BASE44_API_KEY || (typeof req.body.apiKey === "string" ? req.body.apiKey.trim() : "");
+  if (provider === "base44" && !base44Key) {
+    return res.status(503).json({ text: "Indsæt din Base44-nøgle under AI-indstillinger." });
   }
 
   try {
@@ -64,15 +65,17 @@ app.post("/api/chat", async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${BASE44_API_KEY}`
+        "Authorization": `Bearer ${base44Key}`
       },
       body: JSON.stringify({ messages: apiMessages, systemPrompt: sys, temperature })
     });
 
     if (!b44res.ok) {
-      const body = await b44res.text();
-      console.error(`[Base44] ${b44res.status}: ${body}`);
-      return res.status(502).json({ text: "Base44 svarede ikke korrekt. Prøv igen." });
+      console.error(`[Base44] HTTP ${b44res.status}`);
+      if (b44res.status === 401 || b44res.status === 403) {
+        return res.status(b44res.status).json({ text: "Base44 afviste nøglen. Kontrollér den under AI-indstillinger." });
+      }
+      return res.status(502).json({ text: `Base44 svarede med HTTP ${b44res.status}.` });
     }
 
     const data = await b44res.json();

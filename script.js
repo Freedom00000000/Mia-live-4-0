@@ -21,9 +21,12 @@ const USER_ID = getOrCreateUserId();
 
 // ── ElevenLabs config ────────────────────────────────────────────────────────
 const EL_KEY_STORAGE  = "mia_el_key";
-const EL_VOICE_ID     = "vcCMoPBD8hflZ6AMbWjm";
-const EL_ENDPOINT     = `https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}`;
+const EL_VOICE_STORAGE = "mia_el_voice_id";
+const EL_DEFAULT_VOICE_ID = "vcCMoPBD8hflZ6AMbWjm";
+const VOICE_AUTO_STORAGE = "mia_voice_auto";
 let EL_API_KEY = localStorage.getItem(EL_KEY_STORAGE) || "";
+let EL_VOICE_ID = localStorage.getItem(EL_VOICE_STORAGE) || EL_DEFAULT_VOICE_ID;
+let voiceAutoEnabled = localStorage.getItem(VOICE_AUTO_STORAGE) !== "false";
 
 // ── Prodia config ────────────────────────────────────────────────────────────
 const PRODIA_KEY_STORAGE = "mia_prodia_key";
@@ -353,11 +356,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let elAudio      = null;
   let elSuspended  = false; // true when credits run out — skip EL for this session
+  let elFinish     = null;
+  let speechRun    = 0;
+  let isMiaSpeaking = false;
 
   async function speakElevenLabs(text) {
     if (!EL_API_KEY || elSuspended) return false;
     try {
-      const res = await fetch(EL_ENDPOINT, {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(EL_VOICE_ID)}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -378,21 +384,34 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) { EL_API_KEY = ""; localStorage.removeItem(EL_KEY_STORAGE); }
         if (res.status === 429 || res.status >= 500)  { elSuspended = true; } // out of credits or server error
+        const modalError = document.getElementById("apiKeyError");
+        if (document.getElementById("apiKeyModal")?.classList.contains("modal--visible") && modalError) {
+          modalError.textContent = `ElevenLabs svarede HTTP ${res.status}; bruger systemstemme.`;
+        }
         return false;
       }
       const blob = await res.blob();
       if (!blob.size) return false;
       const url  = URL.createObjectURL(blob);
       return new Promise(resolve => {
-        if (elAudio) { elAudio.pause(); elAudio = null; }
+        cancelElevenLabs();
         elAudio = new Audio(url);
-        elAudio.onended  = () => { URL.revokeObjectURL(url); elAudio = null; resolve(true); };
-        elAudio.onerror  = () => { URL.revokeObjectURL(url); elAudio = null; resolve(false); };
+        const audio = elAudio;
+        let done = false;
+        const finish = ok => {
+          if (done) return;
+          done = true;
+          URL.revokeObjectURL(url);
+          if (elAudio === audio) elAudio = null;
+          if (elFinish === finish) elFinish = null;
+          resolve(ok);
+        };
+        elFinish = finish;
+        audio.onended = () => finish(true);
+        audio.onerror = () => finish(false);
         elAudio.play().then(() => {}).catch(err => {
           console.warn("EL play() blocked:", err);
-          URL.revokeObjectURL(url);
-          elAudio = null;
-          resolve(false);
+          finish(false);
         });
       });
     } catch (_) { return false; }
@@ -400,6 +419,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function cancelElevenLabs() {
     if (elAudio) { elAudio.pause(); elAudio.src = ""; elAudio = null; }
+    if (elFinish) elFinish(false);
+  }
+
+  function cancelSpeech() {
+    speechRun++;
+    isMiaSpeaking = false;
+    cancelElevenLabs();
+    speechSynthesis.cancel();
+    setMicState("idle");
   }
 
   // ─── TTS ───────────────────────────────────────────────────────────────────
@@ -443,11 +471,16 @@ document.addEventListener("DOMContentLoaded", function () {
   speechSynthesis.addEventListener("voiceschanged", () => { _cachedVoice = null; });
 
   function speakAll(parts, onEnd) {
+    cancelSpeech();
+    const run = speechRun;
+    isMiaSpeaking = true;
     let idx = 0;
     async function next() {
+      if (run !== speechRun) return;
       if (idx >= parts.length) {
+        isMiaSpeaking = false;
         setMicState("idle");
-        if (voiceCallActive) { vcTranscript.textContent = ""; setVcState("listening"); }
+        if (voiceCallActive) { vcTranscript.textContent = ""; setVcState("listening"); startListening(); }
         if (onEnd) onEnd();
         return;
       }
@@ -457,6 +490,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // Try ElevenLabs first, fall back to Web Speech API
       const elOk = await speakElevenLabs(text);
+      if (run !== speechRun) return;
       if (elOk) {
         setTimeout(next, 200);
         return;
@@ -551,7 +585,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     recognition.onend = () => {
       isListening = false;
-      if (liveMode && !userInput.disabled && !speechSynthesis.speaking) {
+      if (liveMode && !userInput.disabled && !isMiaSpeaking && !speechSynthesis.speaking) {
         startListening();
       } else {
         userInput.placeholder = "Skriv til MIA…";
@@ -563,7 +597,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function startListening() {
-    if (!recognition || userInput.disabled) return;
+    if (!recognition || userInput.disabled || isMiaSpeaking) return;
     try { recognition.start(); } catch (_) {}
   }
 
@@ -860,7 +894,7 @@ document.addEventListener("DOMContentLoaded", function () {
     recognition.onend = () => {
       isListening = false;
       // In voice call: only restart if not already sending (silence detector may have triggered)
-      const cont = (liveMode || voiceCallActive) && !userInput.disabled && !speechSynthesis.speaking && vcCurrentState === "listening";
+      const cont = (liveMode || voiceCallActive) && !userInput.disabled && !isMiaSpeaking && !speechSynthesis.speaking && vcCurrentState === "listening";
       if (cont) {
         setTimeout(() => { if (voiceCallActive && vcCurrentState === "listening") startListening(); }, 80);
       } else if (!voiceCallActive) {
@@ -1728,6 +1762,7 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
       const form           = document.getElementById("apiKeyForm");
       const input          = document.getElementById("apiKeyInput");
       const elInput        = document.getElementById("elKeyInput");
+      const elVoiceInput   = document.getElementById("elVoiceInput");
       const prodiaInput    = document.getElementById("prodiaKeyInput");
       const providerSelect = document.getElementById("providerSelect");
       const b44Section     = document.getElementById("b44KeySection");
@@ -1741,6 +1776,7 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
       if (providerSelect) providerSelect.value = currentProvider;
       if (input)        input.value       = B44_API_KEY;
       if (elInput)      elInput.value     = EL_API_KEY;
+      if (elVoiceInput) elVoiceInput.value = EL_VOICE_ID;
       if (prodiaInput)  prodiaInput.value = PRODIA_API_KEY;
       if (ollamaUrl)    ollamaUrl.value   = localStorage.getItem(OLLAMA_URL_STORAGE) || "http://localhost:11434";
       if (ollamaModel)  ollamaModel.value = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "llama3";
@@ -1775,6 +1811,12 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
         if (elKey.length >= 8) {
           EL_API_KEY = elKey;
           localStorage.setItem(EL_KEY_STORAGE, elKey);
+          elSuspended = false;
+        }
+        const voiceId = elVoiceInput?.value.trim();
+        if (voiceId) {
+          EL_VOICE_ID = voiceId;
+          localStorage.setItem(EL_VOICE_STORAGE, voiceId);
         }
         const prodiaKey = prodiaInput?.value.trim() || "";
         if (prodiaKey.length >= 8) {
@@ -2331,6 +2373,11 @@ Kald kun funktioner når det er relevant. Ellers svar normalt.`;
   // Split on ||| and display each part as a separate bubble with realistic delays
   async function displayResponse(rawText) {
     const parts = rawText.split("|||").map(p => p.trim()).filter(Boolean);
+    const shouldRead = voiceAutoEnabled || liveMode || voiceCallActive;
+    if (shouldRead) {
+      const speechParts = parts.map(part => part.replace(/```[\s\S]*?```/g, "kodeblok udeladt").replace(/<[^>]*>/g, "").trim()).filter(Boolean);
+      if (speechParts.length) speakAll(speechParts);
+    }
     for (let i = 0; i < parts.length; i++) {
       if (i > 0) {
         appendTyping();
@@ -2343,7 +2390,7 @@ Kald kun funktioner når det er relevant. Ellers svar normalt.`;
       }
     }
     // Restart mic in live voice mode
-    if (liveMode && !userInput.disabled) startListening();
+    if (liveMode && !shouldRead && !userInput.disabled) startListening();
   }
 
   // ─── Confession system (dyb affection only) ───────────────────────────────
@@ -3156,9 +3203,79 @@ TILFØJ: [ny regel hvis nødvendigt, eller "ingen"]`;
     sendBtn.disabled   = false;
     userInput.disabled = false;
     userInput.focus();
+    if ((liveMode || voiceCallActive) && !isMiaSpeaking) startListening();
   }
 
   // ── Event listeners ────────────────────────────────────────────────────────
+
+  const speakerBtn = document.getElementById("speakerBtn");
+  function updateSpeakerButton() {
+    if (!speakerBtn) return;
+    speakerBtn.textContent = voiceAutoEnabled ? "🔊" : "🔇";
+    speakerBtn.setAttribute("aria-pressed", String(voiceAutoEnabled));
+    speakerBtn.setAttribute("aria-label", voiceAutoEnabled ? "Slå automatisk oplæsning fra" : "Slå automatisk oplæsning til");
+  }
+  updateSpeakerButton();
+  speakerBtn?.addEventListener("click", () => {
+    voiceAutoEnabled = !voiceAutoEnabled;
+    localStorage.setItem(VOICE_AUTO_STORAGE, String(voiceAutoEnabled));
+    if (!voiceAutoEnabled && !voiceCallActive) cancelSpeech();
+    updateSpeakerButton();
+  });
+
+  document.getElementById("testVoiceBtn")?.addEventListener("click", () => {
+    const key = document.getElementById("elKeyInput")?.value.trim();
+    const voiceId = document.getElementById("elVoiceInput")?.value.trim();
+    if (key) { EL_API_KEY = key; elSuspended = false; }
+    if (voiceId) EL_VOICE_ID = voiceId;
+    speak("Hej, det er MIA. Jeg er her, og du kan høre mig med det samme.");
+  });
+
+  document.getElementById("loadVoicesBtn")?.addEventListener("click", async () => {
+    const key = document.getElementById("elKeyInput")?.value.trim();
+    const picker = document.getElementById("voicePicker");
+    const row = document.getElementById("voicePickerRow");
+    const error = document.getElementById("apiKeyError");
+    if (!key) { error.textContent = "Indsæt din ElevenLabs-nøgle først."; return; }
+    error.textContent = "Henter stemmer…";
+    try {
+      const response = await fetch("/api/voices", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey: key })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.text || `HTTP ${response.status}`);
+      picker.replaceChildren();
+      for (const voice of data.voices) {
+        const option = document.createElement("option");
+        option.value = voice.id;
+        option.textContent = voice.name + (voice.description ? ` — ${voice.description.slice(0, 80)}` : "");
+        picker.appendChild(option);
+      }
+      row.style.display = data.voices.length ? "flex" : "none";
+      if (data.voices.length) document.getElementById("elVoiceInput").value = picker.value;
+      error.textContent = data.voices.length ? "Vælg en stemme og tryk Prøv stemmen." : "Ingen kvindestemmer fundet på kontoen.";
+    } catch (err) {
+      error.textContent = err.message;
+    }
+  });
+  document.getElementById("voicePicker")?.addEventListener("change", e => {
+    document.getElementById("elVoiceInput").value = e.target.value;
+  });
+
+  document.getElementById("toolsPanel")?.addEventListener("click", e => {
+    const action = e.target.closest("[data-quick]")?.dataset.quick;
+    if (!action || userInput.disabled) return;
+    if (action === "voice") return voiceCallBtn?.click();
+    if (action === "file") return fileInput?.click();
+    if (action === "export") return exportBtn?.click();
+    if (action === "notes") { userInput.value = "vis mine noter"; return handleSend(); }
+    const hints = {
+      image: "Lav et billede af ",
+      web: "Søg på nettet efter ",
+      alarm: "Sæt en alarm om 10 minutter for "
+    };
+    if (hints[action]) { userInput.value = hints[action]; userInput.focus(); }
+  });
 
   sendBtn.addEventListener("click", handleSend);
   userInput.addEventListener("keydown", e => {

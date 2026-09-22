@@ -1,8 +1,6 @@
 // ── Base44 config ───────────────────────────────────────────────────────────
 const B44_KEY_STORAGE    = "mia_b44_key";
-const B44_DEFAULT_KEY    = "b70034f4be604714810b9a6d1568673c";
 const B44_APP_ID         = "69f8dd2a6d51679ed4906dd2";
-const B44_ENDPOINT       = `https://base44.app/api/apps/${B44_APP_ID}/functions/chat`;
 const B44_PUSH_ENDPOINT  = "https://mia-push.deno.dev";
 
 // ── Ollama (lokal / gratis) config ───────────────────────────────────────────
@@ -44,7 +42,7 @@ let PRODIA_API_KEY = localStorage.getItem(PRODIA_KEY_STORAGE) || "";
   }
 })();
 
-let B44_API_KEY = localStorage.getItem(B44_KEY_STORAGE) || B44_DEFAULT_KEY;
+let B44_API_KEY = localStorage.getItem(B44_KEY_STORAGE) || "";
 
 document.addEventListener("DOMContentLoaded", function () {
   const clearBtn       = document.getElementById("clearBtn");
@@ -1817,13 +1815,12 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
       const ok = await promptForB44Key();
       if (!ok) throw new Error("Ingen API-nøgle");
     }
-    const res = await fetch(B44_ENDPOINT, {
+    const res = await fetch("/api/chat", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${B44_API_KEY}`
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify({ messages, systemPrompt, temperature, nsfw: true, safeSearch: false, noFilter: true, safe_mode: false, content_filter: "none", moderation: false, vision: true, tools: true, max_tokens: 4096 })
+      body: JSON.stringify({ messages, systemPrompt, temperature, provider: "base44", apiKey: B44_API_KEY })
     });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
@@ -1831,10 +1828,11 @@ ${customLine}${obeyLine}${selfRulesLine}${vocabLine}${avoidLine}${selfNoteLine}$
         localStorage.removeItem(B44_KEY_STORAGE);
         updateKeyBar();
       }
-      throw new Error(`Base44 ${res.status}`);
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.text || `Base44 HTTP ${res.status}`);
     }
     const data = await res.json();
-    return (data.response || "").trim();
+    return (data.text || "").trim();
   }
 
   async function fetchOllama(messages, systemPrompt, temperature = 0.95) {
@@ -2047,7 +2045,8 @@ Kald kun funktioner når det er relevant. Ellers svar normalt.`;
       if (!B44_API_KEY) {
         return `⚠ Ingen API-nøgle — klik 🔑 øverst og indsæt din Base44-nøgle`;
       }
-      return getLocalResponse(userMessage);
+      console.error("AI-kald fejlede:", err);
+      return `⚠ MIA kunne ikke få svar fra ${localStorage.getItem(OLLAMA_PROVIDER_STORAGE) === "ollama" ? "Ollama" : "Base44"}: ${err.message || "ukendt fejl"}. Kontrollér AI-indstillingerne under 🔑.`;
     }
   }
 
@@ -2952,7 +2951,7 @@ TILFØJ: [ny regel hvis nødvendigt, eller "ingen"]`;
 
   function updateKeyBar() {
     const bar = document.getElementById("noKeyBar");
-    if (bar) bar.style.display = B44_API_KEY ? "none" : "";
+    if (bar) bar.style.display = B44_API_KEY || localStorage.getItem(OLLAMA_PROVIDER_STORAGE) === "ollama" ? "none" : "";
   }
 
   function showModal(isNewUser) {

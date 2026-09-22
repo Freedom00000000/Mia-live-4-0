@@ -19,6 +19,27 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", ai: AI_PROVIDER, model: AI_PROVIDER === "ollama" ? OLLAMA_MODEL : "gpt_5_5" });
 });
 
+app.post("/api/voices", async (req, res) => {
+  const apiKey = typeof req.body.apiKey === "string" ? req.body.apiKey.trim() : "";
+  if (!apiKey) return res.status(400).json({ text: "Indsæt din ElevenLabs-nøgle først." });
+  try {
+    const response = await fetch("https://api.elevenlabs.io/v2/voices?page_size=100&gender=female", {
+      headers: { "xi-api-key": apiKey }
+    });
+    if (!response.ok) {
+      return res.status(response.status === 401 ? 401 : 502).json({ text: `ElevenLabs afviste forespørgslen (HTTP ${response.status}).` });
+    }
+    const data = await response.json();
+    const voices = (data.voices || [])
+      .filter(voice => !/child|teen/i.test(voice.labels?.age || ""))
+      .map(voice => ({ id: voice.voice_id, name: voice.name, description: voice.description || "" }));
+    res.json({ voices });
+  } catch (err) {
+    console.error(`[ElevenLabs] ${err.message}`);
+    res.status(502).json({ text: "Kunne ikke hente stemmer fra ElevenLabs." });
+  }
+});
+
 app.post("/api/chat", async (req, res) => {
   const { messages = [], systemPrompt, temperature = 0.95 } = req.body;
 

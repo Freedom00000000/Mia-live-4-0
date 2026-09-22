@@ -13,11 +13,6 @@ const BASE44_CHAT_URL = `https://base44.app/api/apps/${BASE44_APP_ID}/functions/
 const OLLAMA_URL      = process.env.OLLAMA_URL   || "http://localhost:11434";
 const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "llama3";
 
-if (AI_PROVIDER === "base44" && (!BASE44_API_KEY || !BASE44_APP_ID)) {
-  console.error("FEJL: BASE44_API_KEY og BASE44_APP_ID skal være sat i .env (eller sæt AI_PROVIDER=ollama)");
-  process.exit(1);
-}
-
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 app.get("/api/health", (_req, res) => {
@@ -40,6 +35,10 @@ app.post("/api/chat", async (req, res) => {
   }
 
   const provider = req.body.provider || AI_PROVIDER;
+
+  if (provider === "base44" && (!BASE44_API_KEY || !BASE44_APP_ID)) {
+    return res.status(503).json({ text: "Base44 er ikke konfigureret på serveren." });
+  }
 
   try {
     if (provider === "ollama") {
@@ -87,7 +86,22 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`MIA kører på http://localhost:${PORT} (AI: ${AI_PROVIDER}${AI_PROVIDER === "ollama" ? ` / ${OLLAMA_MODEL}` : ""})`);
-});
+function start(port = process.env.PORT || 3000) {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, "127.0.0.1");
+    server.once("error", reject);
+    server.once("listening", () => {
+      console.log(`MIA kører på http://127.0.0.1:${server.address().port} (AI: ${AI_PROVIDER}${AI_PROVIDER === "ollama" ? ` / ${OLLAMA_MODEL}` : ""})`);
+      resolve(server);
+    });
+  });
+}
+
+module.exports = { start };
+
+if (require.main === module) {
+  start().catch(err => {
+    console.error(`MIA kunne ikke starte: ${err.message}`);
+    process.exitCode = 1;
+  });
+}

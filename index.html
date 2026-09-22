@@ -41,6 +41,7 @@
       <div class="header-top">
         <h1 class="mia-title">MIA</h1>
         <div class="header-actions">
+          <button id="speakerBtn" class="clear-btn" type="button" title="Oplæsning til/fra" aria-label="Slå automatisk oplæsning fra" aria-pressed="true">🔊</button>
           <button id="apiKeyBtn" class="clear-btn" title="Base44 API-nøgle" aria-label="Indstil API-nøgle">🔑</button>
           <button id="roleBtn" class="clear-btn" title="Rolle &amp; Prompt" aria-label="Tilpas MIA">⚙</button>
           <button id="exportBtn" class="clear-btn" title="Eksporter samtale" aria-label="Download samtale">↓</button>
@@ -50,9 +51,20 @@
       <p class="mia-subtitle">Din AI-følgesvend</p>
       <div class="header-meta">
         <span id="affectionBadge" class="affection-badge" title="Forbindelsesniveau"></span>
-        <button id="clearBtn" class="clear-btn" title="Ryd samtalehistorik">Ryd</button>
       </div>
       <span id="affectionLabel" class="affection-label affection--ny">Ny forbindelse</span>
+      <details class="tools-panel" id="toolsPanel">
+        <summary>Værktøjer</summary>
+        <div class="tools-panel__items">
+          <button type="button" data-quick="voice">🎙 Live stemme</button>
+          <button type="button" data-quick="file">📎 Fil</button>
+          <button type="button" data-quick="image">🎨 Billede</button>
+          <button type="button" data-quick="web">🌐 Web</button>
+          <button type="button" data-quick="notes">📝 Noter</button>
+          <button type="button" data-quick="alarm">⏰ Alarm</button>
+          <button type="button" data-quick="export">↓ Eksport</button>
+        </div>
+      </details>
     </header>
 
     <div id="noKeyBar" class="no-key-bar" style="display:none">Base44 mangler en nøgle. Tryk på 🔑 for at forbinde.</div>
@@ -206,6 +218,17 @@
           <label for="elKeyInput">ElevenLabs API-nøgle (stemme)</label>
           <input id="elKeyInput" type="password" autocomplete="off" placeholder="ElevenLabs nøgle — elevenlabs.io/app/settings">
         </div>
+        <div class="modal-field">
+          <label for="elVoiceInput">ElevenLabs Voice ID (vælg en voksen kvindestemme)</label>
+          <input id="elVoiceInput" type="text" autocomplete="off" placeholder="Voice ID fra ElevenLabs">
+          <small>Vælg en varm, flirtende stemme i ElevenLabs. Uden nøgle bruger MIA en installeret dansk systemstemme.</small>
+        </div>
+        <button id="loadVoicesBtn" type="button" class="role-save-btn">Find kvindestemmer</button>
+        <div id="voicePickerRow" class="modal-field" style="display:none">
+          <label for="voicePicker">Vælg stemme</label>
+          <select id="voicePicker"></select>
+        </div>
+        <button id="testVoiceBtn" type="button" class="role-save-btn">▶ Prøv stemmen</button>
         <div class="modal-field">
           <label for="prodiaKeyInput">Prodia API-nøgle (billeder)</label>
           <input id="prodiaKeyInput" type="password" autocomplete="off" placeholder="Prodia nøgle — app.prodia.com">

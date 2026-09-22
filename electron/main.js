@@ -1,5 +1,4 @@
 const { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } = require("electron");
-const net  = require("net");
 const path = require("path");
 
 // app.getAppPath() resolves correctly in both dev and packaged builds
@@ -7,18 +6,6 @@ const path = require("path");
 const ROOT = app.getAppPath();
 
 let win, tray, PORT;
-
-// ── Find a free port ────────────────────────────────────────────────────────
-function findFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.listen(0, "127.0.0.1", () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
-    });
-    srv.on("error", reject);
-  });
-}
 
 // ── Start Express server in-process ────────────────────────────────────────
 function startServer(port) {
@@ -104,7 +91,8 @@ app.isQuitting = false;
 
 app.whenReady().then(async () => {
   try {
-    PORT = await findFreePort();
+    // A stable origin keeps localStorage (profile and user-entered keys) across launches.
+    PORT = Number(process.env.MIA_PORT) || 43108;
     await startServer(PORT);
   } catch (err) {
     dialog.showErrorBox("MIA kunne ikke starte", `Serverfejl:\n${err.message}`);

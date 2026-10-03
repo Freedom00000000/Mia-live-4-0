@@ -361,6 +361,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let isMiaSpeaking = false;
 
   async function speakElevenLabs(text) {
+    const run = speechRun;
     if (!EL_API_KEY || elSuspended) return false;
     try {
       const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(EL_VOICE_ID)}`, {
@@ -369,6 +370,7 @@ document.addEventListener("DOMContentLoaded", function () {
           "Content-Type": "application/json",
           "xi-api-key": EL_API_KEY
         },
+        signal: AbortSignal.timeout(20000),
         body: JSON.stringify({
           text,
           model_id: "eleven_multilingual_v2",
@@ -391,7 +393,7 @@ document.addEventListener("DOMContentLoaded", function () {
         return false;
       }
       const blob = await res.blob();
-      if (!blob.size) return false;
+      if (run !== speechRun || !blob.size) return false;
       const url  = URL.createObjectURL(blob);
       return new Promise(resolve => {
         cancelElevenLabs();
@@ -424,6 +426,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function cancelSpeech() {
     speechRun++;
+    window.miaSpeech?.stop();
     isMiaSpeaking = false;
     cancelElevenLabs();
     speechSynthesis.cancel();
@@ -474,6 +477,8 @@ document.addEventListener("DOMContentLoaded", function () {
     cancelSpeech();
     const run = speechRun;
     isMiaSpeaking = true;
+    try { recognition?.abort(); } catch (_) {}
+    isListening = false;
     let idx = 0;
     async function next() {
       if (run !== speechRun) return;
@@ -496,6 +501,23 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
 
+      // Windows desktop speech avoids Chromium's missing/late system voices.
+      if (window.miaSpeech?.available) {
+        let nativeOk = false;
+        try { nativeOk = await window.miaSpeech.speak(text); } catch (_) {}
+        if (run !== speechRun) return;
+        if (nativeOk) { setTimeout(next, 200); return; }
+      }
+
+      // Wait briefly for the browser to populate its system voice list.
+      if (!speechSynthesis.getVoices().length) {
+        await new Promise(resolve => {
+          const ready = () => { clearTimeout(timer); speechSynthesis.removeEventListener("voiceschanged", ready); resolve(); };
+          const timer = setTimeout(ready, 1500);
+          speechSynthesis.addEventListener("voiceschanged", ready);
+        });
+      }
+      if (run !== speechRun) return;
       // Web Speech fallback
       try {
         speechSynthesis.cancel();
@@ -509,7 +531,11 @@ document.addEventListener("DOMContentLoaded", function () {
         u.pitch  = 1.12 + warmth * 0.16; // higher base pitch for young female voice
         u.volume = 1.0;
         u.onend  = () => setTimeout(next, 260);
-        u.onerror = () => setTimeout(next, 100);
+        u.onerror = event => {
+          if (run !== speechRun) return;
+          cancelSpeech();
+          setVoiceStatus(`Oplæsning kunne ikke starte (${event.error}). Kontrollér Windows-stemme og lydudgang, eller vælg ElevenLabs i indstillinger.`);
+        };
         speechSynthesis.speak(u);
       } catch (_) { next(); }
     }
@@ -760,16 +786,8 @@ document.addEventListener("DOMContentLoaded", function () {
         bar.style.height = Math.round(Math.min(h, 44)) + "px";
       });
 
-      // ── Barge-in ──
-      if (state === "speaking" && level > 0.12 && !isListening) {
-        cancelElevenLabs();
-        speechSynthesis.cancel();
-        hadSpeech    = true;
-        silenceStart = Date.now();
-        setVcState("listening");
-        setTimeout(() => { if (voiceCallActive && !isListening) startListening(); }, 120);
-        return;
-      }
+      // Keep listening paused during playback so speaker echo cannot cancel MIA.
+      // The microphone button still allows the user to interrupt explicitly.
 
       // ── Silence detection: wait until user stops talking, then send ──
       if (state === "listening" && isListening) {
@@ -832,8 +850,7 @@ document.addEventListener("DOMContentLoaded", function () {
     voiceCallOverlay.classList.remove("vc--active", "vc--listening", "vc--speaking", "vc--thinking");
     voiceCallOverlay.setAttribute("aria-hidden", "true");
     voiceCallBtn.classList.remove("vc-btn--active");
-    cancelElevenLabs();
-    speechSynthesis.cancel();
+    cancelSpeech();
     try { recognition.stop(); } catch (_) {}
     stopAudioAnalyser();
     stopCamera();

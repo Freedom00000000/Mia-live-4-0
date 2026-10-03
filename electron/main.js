@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } = require("electron");
+const { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage, ipcMain } = require("electron");
 const path = require("path");
 
 // app.getAppPath() resolves correctly in both dev and packaged builds
@@ -6,6 +6,15 @@ const path = require("path");
 const ROOT = app.getAppPath();
 
 let win, tray, PORT;
+const { createWindowsSpeech } = require("./windows-speech");
+const nativeSpeech = createWindowsSpeech();
+ipcMain.handle("mia:speak", (event, text) => {
+  if (event.sender !== win?.webContents || typeof text !== "string" || text.length > 50000) return false;
+  return nativeSpeech.speak(text);
+});
+ipcMain.on("mia:stop-speech", event => {
+  if (event.sender === win?.webContents) nativeSpeech.stop();
+});
 
 // ── Start Express server in-process ────────────────────────────────────────
 function startServer(port) {
@@ -60,6 +69,8 @@ function createChatWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
+      autoplayPolicy: "no-user-gesture-required",
     },
   });
 
@@ -106,5 +117,5 @@ app.whenReady().then(async () => {
 
 // Keep running in tray when all windows are closed
 app.on("window-all-closed", () => {});
-app.on("before-quit", () => { app.isQuitting = true; });
+app.on("before-quit", () => { nativeSpeech.stop(); app.isQuitting = true; });
 app.on("activate", showWindow); // macOS dock click
